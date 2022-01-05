@@ -1,0 +1,4 @@
+
+[workspace]
+resolver = "2"
+members = ["emulator", "asm-ir", "assembler"]
