@@ -48,3 +48,13 @@ impl Serial for SerialTty {
         lock.flush().expect("Stdout is flushable");
     }
 }
+
+pub struct SerialNumberInterface;
+
+impl Serial for SerialNumberInterface {
+    const KIND: u8 = IoKind::SerialTty as u8;
+
+    fn write(&mut self, v: u8) {
+        println!(">> {}", v);
+    }
+}

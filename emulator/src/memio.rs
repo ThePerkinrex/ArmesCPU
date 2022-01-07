@@ -76,7 +76,7 @@ impl MemoryIO for MemorySection {
     fn get(&mut self, idx: u16) -> Option<u8> {
         for (off, mem) in &mut self.data {
             if (*off..=(*off + mem.last_idx().unwrap())).contains(&idx) {
-                println!("{:04X} {:04X} {:04X}", idx, off, idx - *off);
+                // println!("{:04X} {:04X} {:04X}", idx, off, idx - *off);
                 return mem.get(idx - *off);
             }
         }

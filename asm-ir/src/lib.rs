@@ -204,7 +204,7 @@ impl Program {
                     off,
                     instrs
                         .into_iter()
-                        .inspect(|a| println!("{:?} {:?}", a, Into::<BytecodeInstr>::into(*a)))
+                        // .inspect(|a| println!("{:?} {:?}", a, Into::<BytecodeInstr>::into(*a)))
                         .flat_map(|x| Into::<BytecodeInstr>::into(x).into_iter())
                         .collect::<Vec<u8>>(),
                 )
@@ -217,6 +217,7 @@ impl Program {
             p += s.len() as u16;
         }
         buf.write_all(&[header.len() as u8])?;
+        println!("Header: {:?}", header);
         for (filepos, mempos) in header {
             buf.write_all(&filepos.to_le_bytes())?;
             buf.write_all(&mempos.to_le_bytes())?;
@@ -234,10 +235,13 @@ impl Program {
         for i in 0..num_segments {
             let filepos = data[i * 4] as u16 | ((data[i * 4 + 1] as u16) << 8);
             let mempos = data[i * 4 + 2] as u16 | ((data[i * 4 + 3] as u16) << 8);
-            let prog = if (i + 1) * 4 < num_segments {
+            println!("Filepos: {}\tMempos: {}", filepos, mempos);
+            let prog = if i + 1 < num_segments {
                 let next_filepos = data[i * 4 + 4] as u16 | ((data[i * 4 + 5] as u16) << 8);
+                println!("Next filepos: {}", next_filepos);
                 &data[num_segments * 4..][filepos as usize..next_filepos as usize]
             } else {
+                println!("Next filepos: EOF");
                 &data[num_segments * 4..][filepos as usize..]
             };
             // let mut instr = Vec::new();
@@ -291,9 +295,34 @@ mod tests {
     fn program_write_read() {
         let mut b = Vec::new();
         let p = Program {
-            segments: vec![(0, vec![Ast::JumpOffset(1, 0), Ast::Nop])],
+            segments: vec![
+                (0, vec![Ast::JumpOffset(0, 0x1000), Ast::Nop]),
+                (
+                    0x1000,
+                    vec![
+                        Ast::LoadPointer(0xF002),
+                        Ast::LoadByte(0, b'H'),
+                        Ast::LoadFromRegs(0),
+                        Ast::LoadByte(0, b'i'),
+                        Ast::LoadFromRegs(0),
+                        Ast::LoadByte(0, b'\n'),
+                        Ast::LoadFromRegs(0),
+                        Ast::Jump(0x1008),
+                    ],
+                ),
+            ],
         };
         p.clone().write(&mut b).expect("Error writing to buffer");
+        println!("[");
+        for s in b[1..].chunks(2) {
+            print!("\t");
+            for e in s {
+                print!(" {:02X}", e)
+            }
+            println!(",")
+        }
+        println!("]");
+
         // println!("BUF: {:?}", b);
         let new_p = Program::parse(&b);
         assert_eq!(p, new_p);
