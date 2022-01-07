@@ -1,5 +1,6 @@
 use emulator::Cpu;
 
 fn main() {
-    println!("Hello, world!");
+    let mut cpu = Cpu::default();
+    cpu.cycle();
 }
