@@ -21,16 +21,16 @@ fn main() {
     cpu.load_program(
         &[
             // setup
-            Ast::LoadByte(0, 0), // x
-            Ast::LoadByte(1, 1), // y
-            Ast::LoadByte(2, 0), // a
+            Ast::LoadByte(0, 0),      // x
+            Ast::LoadByte(1, 1),      // y
+            Ast::LoadByte(2, 0),      // a
             Ast::LoadPointer(0xF005), // Set the serial number out
             // swap part 1
-            Ast::LoadReg(2,1),
+            Ast::LoadReg(2, 1),
             // addition
             Ast::AddReg(1, 0),
             // swap part 2,
-            Ast::LoadReg(0,2),
+            Ast::LoadReg(0, 2),
             // print
             Ast::LoadFromRegs(0),
             // Reset if overflow

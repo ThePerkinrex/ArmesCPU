@@ -32,7 +32,13 @@ impl Default for Cpu {
 
 impl Debug for Cpu {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Cpu").field("program_counter", &self.program_counter).field("pointer", &self.pointer).field("registers", &self.registers).field("stack", &self.stack).field("skip", &self.skip).finish()
+        f.debug_struct("Cpu")
+            .field("program_counter", &self.program_counter)
+            .field("pointer", &self.pointer)
+            .field("registers", &self.registers)
+            .field("stack", &self.stack)
+            .field("skip", &self.skip)
+            .finish()
     }
 }
 
@@ -75,7 +81,7 @@ impl Cpu {
         self.program_counter += if next.is_some() { 2 } else { 4 };
         if self.skip {
             self.skip = false;
-        }else{
+        } else {
             match instr {
                 Ast::Nop => (),
                 Ast::Return => self.program_counter = self.stack.pop().unwrap(),
@@ -113,64 +119,59 @@ impl Cpu {
                 Ast::LoadDigits(x) => {
                     let v = self.registers[x as usize];
                     self.memory.set(self.pointer, v / 100);
-                    self.memory.set(self.pointer+1, (v % 100) / 10);
-                    self.memory.set(self.pointer+2, v % 10);
-                },
+                    self.memory.set(self.pointer + 1, (v % 100) / 10);
+                    self.memory.set(self.pointer + 2, v % 10);
+                }
                 Ast::LoadIntoRegs(x) => {
                     for i in 0..=x {
-                        self.registers[i as usize] = self.memory.get(self.pointer + i as u16).unwrap()
+                        self.registers[i as usize] =
+                            self.memory.get(self.pointer + i as u16).unwrap()
                     }
-                },
+                }
                 Ast::LoadFromRegs(x) => {
                     for i in 0..=x {
-                        self.memory.set(self.pointer + i as u16, self.registers[i as usize]);
+                        self.memory
+                            .set(self.pointer + i as u16, self.registers[i as usize]);
                     }
-                },
+                }
                 Ast::AddByte(x, kk) => {
-                    let (r, overflowed) =
-                        self.registers[x as usize].overflowing_add(kk);
+                    let (r, overflowed) = self.registers[x as usize].overflowing_add(kk);
                     self.registers[0xF] = if overflowed { 1 } else { 0 };
                     self.registers[x as usize] = r;
-                },
+                }
                 Ast::AddReg(x, y) => {
                     let (r, overflowed) =
                         self.registers[x as usize].overflowing_add(self.registers[y as usize]);
                     self.registers[0xF] = if overflowed { 1 } else { 0 };
                     self.registers[x as usize] = r;
-                },
+                }
                 Ast::AddToPointer(x) => {
                     self.pointer = self.pointer.wrapping_add(self.registers[x as usize] as u16)
-                },
-                Ast::Or(x, y) => {
-                    self.registers[x as usize] |= self.registers[y as usize]
-                },
-                Ast::And(x, y) => {
-                    self.registers[x as usize] &= self.registers[y as usize]
-                },
-                Ast::Xor(x, y) => {
-                    self.registers[x as usize] ^= self.registers[y as usize]
-                },
+                }
+                Ast::Or(x, y) => self.registers[x as usize] |= self.registers[y as usize],
+                Ast::And(x, y) => self.registers[x as usize] &= self.registers[y as usize],
+                Ast::Xor(x, y) => self.registers[x as usize] ^= self.registers[y as usize],
                 Ast::ShiftRight(x) => {
                     self.registers[0xF] = self.registers[x as usize] & 1;
                     self.registers[x as usize] >>= 1;
-                },
+                }
                 Ast::ShiftLeft(x) => {
                     let (r, overflowed) = self.registers[x as usize].overflowing_shl(1);
                     self.registers[0xF] = if overflowed { 1 } else { 0 };
                     self.registers[x as usize] = r;
-                },
+                }
                 Ast::Sub(x, y) => {
                     let (r, overflowed) =
                         self.registers[x as usize].overflowing_sub(self.registers[y as usize]);
                     self.registers[0xF] = if !overflowed { 1 } else { 0 };
                     self.registers[x as usize] = r;
-                },
+                }
                 Ast::SubNeg(x, y) => {
                     let (r, overflowed) =
                         self.registers[y as usize].overflowing_sub(self.registers[x as usize]);
                     self.registers[0xF] = if !overflowed { 1 } else { 0 };
                     self.registers[x as usize] = r;
-                },
+                }
             }
         }
     }
