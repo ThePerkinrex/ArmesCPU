@@ -2,13 +2,12 @@ use std::{num::ParseIntError, str::FromStr};
 
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take_till1, take_while},
+    bytes::complete::take_till1,
     character::{
-        complete::{char, newline, not_line_ending, one_of, space0, space1},
+        complete::{char, not_line_ending, one_of, space0, space1},
         is_newline, is_space,
     },
-    combinator::{cond, consumed, map, opt, success, value},
-    error::ParseError,
+    combinator::{consumed, map, opt, success},
     multi::{many0, separated_list0},
     sequence::{pair, tuple},
     IResult,
