@@ -2,16 +2,22 @@ use std::{num::ParseIntError, str::FromStr};
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take, take_till},
-    character::complete::char,
-    character::complete::{digit1, hex_digit0, hex_digit1, one_of},
-    combinator::{all_consuming, cut, map, map_parser, map_res, recognize, value},
-    error::{context, VerboseError},
-    multi::{many0, many1},
-    sequence::{delimited, preceded, terminated, tuple},
+    bytes::complete::{is_not, tag, take_till1, take_while},
+    character::{
+        complete::{char, newline, not_line_ending, one_of, space0, space1},
+        is_newline, is_space,
+    },
+    combinator::{cond, consumed, map, opt, success, value},
+    error::ParseError,
+    multi::{many0, separated_list0},
+    sequence::{pair, tuple},
     IResult,
 };
 use nom_locate::LocatedSpan;
+
+use self::arg::{arg, Arg};
+
+mod arg;
 
 pub fn map_res_fail<I: Clone, O1, O2, E: nom::error::FromExternalError<I, E2>, E2, F, G>(
     mut parser: F,
@@ -56,98 +62,36 @@ impl FromStrRadix for u16 {
     const NAME: &'static str = "word";
 }
 
-type Span<T> = LocatedSpan<T>;
+pub type Span<T> = LocatedSpan<T>;
 type PResult<T, O> = IResult<Span<T>, Span<O>>;
+pub type Instr<'a> = (Span<&'a str>, Vec<Span<Arg>>);
 
-fn binary<N: FromStrRadix>(input: Span<&str>) -> PResult<&str, N> {
-    let (r, (_, n)) = tuple((
-        alt((tag("0b"), tag("0B"))),
-        cut(context(
-            N::NAME,
-            map_res(
-                recognize(many1(terminated(one_of("01"), many0(char('_'))))),
-                |x: Span<&str>| N::from_str_radix(x.fragment(), 2).map(|n| x.map(|_| n)),
-            ),
-        )),
-    ))(input)?;
-    Ok((r, n))
-}
-
-fn hex<N: FromStrRadix>(input: Span<&str>) -> PResult<&str, N> {
-    let (r, (_, n)) = tuple((
-        alt((tag("0x"), tag("0X"))),
-        cut(context(
-            N::NAME,
-            map_res(
-                recognize(many1(terminated(hex_digit1, many0(char('_'))))),
-                |x: Span<&str>| N::from_str_radix(x.fragment(), 16).map(|n| x.map(|_| n)),
-            ),
-        )),
-    ))(input)?;
-    Ok((r, n))
-}
-
-fn decimal<N: FromStrRadix>(input: Span<&str>) -> PResult<&str, N> {
-    context(
-        N::NAME,
-        map_res_fail(
-            recognize(many1(terminated(digit1, many0(char('_'))))),
-            |x: Span<&str>| N::from_str(x.fragment()).map(|n| x.map(|_| n)),
-        ),
-    )(input)
-}
-
-fn number<N: FromStrRadix>(n: Span<&str>) -> PResult<&str, N> {
-    alt((binary, hex, decimal))(n)
-}
-
-fn constant_byte(i: Span<&str>) -> PResult<&str, u8> {
-    let (r, (_, n)) = tuple((tag("$"), number))(i)?;
-    Ok((r, n))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Addr {
-    Pointer,
-    Addr(u16),
-}
-
-fn addr(i: Span<&str>) -> PResult<&str, Addr> {
-    delimited(
-        char('['),
-        cut(context(
-            "address (2 bytes)",
-            alt((
-                map(number, |s: Span<u16>| s.map(Addr::Addr)),
-                map(tag("I"), |x: Span<&str>| x.map(|_| Addr::Pointer)),
-            )),
-        )),
-        char(']'),
+pub fn instr(i: Span<&str>) -> PResult<&str, Instr> {
+    map(
+        consumed(tuple((
+            take_till1(|x| is_space(x as u8) || is_newline(x as u8)),
+            alt((space1, success(Span::new("")))),
+            separated_list0(tuple((char(','), opt(space0))), arg),
+        ))),
+        |(c, (s, _, v))| c.map(|_| (s, v.clone())),
     )(i)
 }
 
-fn register(i: Span<&str>) -> PResult<&str, u8> {
-    preceded(
-        tag("V"),
-        map(
-            map_parser(take(1usize), all_consuming(hex_digit1)),
-            |x: Span<&str>| x.map(|x| u8::from_str_radix(x, 16).unwrap()),
-        ),
+fn eol(i: Span<&str>) -> PResult<&str, &str> {
+    map(consumed(many0(one_of("\n\r"))), |(x, _): (Span<&str>, _)| x)(i)
+}
+
+pub fn comment(i: Span<&str>) -> PResult<&str, &str> {
+    map(
+        consumed(tuple((char(';'), not_line_ending, eol))),
+        |(x, _): (Span<&str>, _)| x,
     )(i)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Arg {
-    Addr(Addr),
-    Byte(u8),
-    Register(u8),
-}
-
-fn arg(i: Span<&str>) -> PResult<&str, Arg> {
+pub fn line(i: Span<&str>) -> IResult<Span<&str>, Option<Span<Instr>>> {
     alt((
-        map(constant_byte, |x| x.map(Arg::Byte)),
-        map(addr, |x| x.map(Arg::Addr)),
-        map(register, |x| x.map(Arg::Register)),
+        map(tuple((space0, comment, eol)), |_| None),
+        map(pair(opt(instr), alt((comment, eol))), |(x, _)| x),
     ))(i)
 }
 
@@ -155,13 +99,15 @@ fn arg(i: Span<&str>) -> PResult<&str, Arg> {
 mod tests {
     use std::fmt::{Debug, Display};
 
-    use nom::error::Error;
+    use nom::{error::Error, AsBytes, IResult};
 
-    use crate::parser::{addr, constant_byte, PResult, Span};
+    use super::{arg::Arg, comment, instr, line, PResult, Span};
 
-    use super::{number, register, Addr, Arg, arg};
-
-    fn assert_nom_err<T: Display, O: PartialEq + Debug, F: Fn(Span<T>) -> PResult<T, O>>(
+    pub fn assert_nom_err<
+        T: Display + AsBytes,
+        O: PartialEq + Debug,
+        F: Fn(Span<T>) -> PResult<T, O>,
+    >(
         f: F,
         i: Span<T>,
     ) {
@@ -171,14 +117,14 @@ mod tests {
                 "Fail at {:?} {}:{}:\n\t{}",
                 code,
                 input.location_line(),
-                input.location_offset(),
+                input.get_utf8_column(),
                 input.fragment()
             ),
             Err(nom::Err::Error(Error { input, code })) => println!(
                 "Error at {:?} {}:{}:\n\t{}",
                 code,
                 input.location_line(),
-                input.location_offset(),
+                input.get_utf8_column(),
                 input.fragment()
             ),
             _ => (),
@@ -186,21 +132,37 @@ mod tests {
         assert!(matches!(r, Err(nom::Err::Error(_))));
     }
 
-    fn assert_nom_failure<T: Display, O: PartialEq + Debug, F: Fn(Span<T>) -> PResult<T, O>>(
+    pub fn assert_nom_failure<
+        T: Display + AsBytes,
+        O: PartialEq + Debug,
+        F: Fn(Span<T>) -> PResult<T, O>,
+    >(
         f: F,
         i: Span<T>,
     ) {
         let r = f(i);
         match &r {
-            Err(nom::Err::Failure(e)) => println!("Fail:\n{}", e),
-            Err(nom::Err::Error(e)) => println!("Error:\n{}", e),
+            Err(nom::Err::Failure(Error { input, code })) => println!(
+                "Fail at {:?} {}:{}:\n\t{}",
+                code,
+                input.location_line(),
+                input.get_utf8_column(),
+                input.fragment()
+            ),
+            Err(nom::Err::Error(Error { input, code })) => println!(
+                "Error at {:?} {}:{}:\n\t{}",
+                code,
+                input.location_line(),
+                input.get_utf8_column(),
+                input.fragment()
+            ),
             _ => (),
         };
         assert!(matches!(r, Err(nom::Err::Failure(_))));
     }
 
-    fn assert_nom_ok<
-        T: Display + Debug + PartialEq,
+    pub fn assert_nom_ok<
+        T: Display + Debug + PartialEq + AsBytes,
         O: PartialEq + Debug,
         F: Fn(Span<T>) -> PResult<T, O>,
     >(
@@ -211,8 +173,20 @@ mod tests {
     ) {
         let r = f(i);
         match &r {
-            Err(nom::Err::Failure(e)) => println!("Fail:\n{}", e),
-            Err(nom::Err::Error(e)) => println!("Error:\n{}", e),
+            Err(nom::Err::Failure(Error { input, code })) => println!(
+                "Fail at {:?} {}:{}:\n\t{}",
+                code,
+                input.location_line(),
+                input.get_utf8_column(),
+                input.fragment()
+            ),
+            Err(nom::Err::Error(Error { input, code })) => println!(
+                "Error at {:?} {}:{}:\n\t{}",
+                code,
+                input.location_line(),
+                input.get_utf8_column(),
+                input.fragment()
+            ),
             _ => (),
         };
         assert!(r.is_ok());
@@ -221,56 +195,118 @@ mod tests {
         assert_eq!(c.fragment(), &v);
     }
 
-    #[test]
-    fn parse_num() {
-        assert_nom_ok(number::<u8>, Span::new("10"), "", 10);
-        assert_nom_failure(number::<u8>, Span::new("256"));
-        assert_nom_ok(number::<u8>, Span::new("0x10"), "", 0x10);
-        assert_nom_ok(number::<u8>, Span::new("0xFF"), "", 0xFF);
-        assert_nom_failure(number::<u8>, Span::new("0x100"));
-        assert_nom_ok(number::<u16>, Span::new("0x100"), "", 0x100);
-        assert_nom_ok(number::<u8>, Span::new("0X10"), "", 0x10);
-        assert_nom_ok(number::<u8>, Span::new("0b10"), "", 0b10);
-        assert_nom_failure(number::<u8>, Span::new("0b100000000"));
-        assert_nom_ok(number::<u8>, Span::new("0B10"), "", 0b10);
-        assert_nom_err(number::<u8>, Span::new("AAAAAA"));
-        // panic!()
+    pub fn assert_nom_ok_generic<
+        T: Display + Debug + PartialEq + AsBytes,
+        O: Debug,
+        F: Fn(Span<T>) -> IResult<Span<T>, O>,
+        C: Fn(O) -> bool,
+    >(
+        f: F,
+        i: Span<T>,
+        res: T,
+        check: C,
+    ) {
+        let r = f(i);
+        match &r {
+            Err(nom::Err::Failure(Error { input, code })) => println!(
+                "Fail at {:?} {}:{}:\n\t{}",
+                code,
+                input.location_line(),
+                input.get_utf8_column(),
+                input.fragment()
+            ),
+            Err(nom::Err::Error(Error { input, code })) => println!(
+                "Error at {:?} {}:{}:\n\t{}",
+                code,
+                input.location_line(),
+                input.get_utf8_column(),
+                input.fragment()
+            ),
+            _ => (),
+        };
+        println!("Should be ok: {:?}", r);
+        assert!(r.is_ok());
+        let (rest, c) = r.unwrap();
+        assert_eq!(rest.fragment(), &res);
+        assert!(check(c));
     }
 
     #[test]
-    fn parse_constant_byte() {
-        assert_nom_ok(constant_byte, Span::new("$10"), "", 10);
-        assert_nom_ok(constant_byte, Span::new("$0x10 hi"), " hi", 0x10);
-        assert_nom_err(constant_byte, Span::new("0b10"));
-        assert_nom_err(constant_byte, Span::new("[0b10]"));
+    fn parse_instr() {
+        assert_nom_ok_generic(instr, Span::new("LD V0, V1"), "", |x| {
+            let (code, args) = x.fragment();
+            code.fragment() == &"LD"
+                && args
+                    .iter()
+                    .zip([Arg::Register(0), Arg::Register(1)].iter())
+                    .all(|(a, b)| a.fragment() == b)
+        });
+
+        assert_nom_ok_generic(
+            instr,
+            Span::new("LD V0, V1 AAAAAAAAAAAAA"),
+            " AAAAAAAAAAAAA",
+            |x| {
+                let (code, args) = x.fragment();
+                code.fragment() == &"LD"
+                    && args
+                        .iter()
+                        .zip([Arg::Register(0), Arg::Register(1)].iter())
+                        .all(|(a, b)| a.fragment() == b)
+            },
+        );
+
+        assert_nom_ok_generic(instr, Span::new("RET A"), "A", |x| {
+            let (code, args) = x.fragment();
+            code.fragment() == &"RET" && args.is_empty()
+        });
+
+        assert_nom_ok_generic(instr, Span::new("RET\n\rA"), "\n\rA", |x| {
+            let (code, args) = x.fragment();
+            code.fragment() == &"RET" && args.is_empty()
+        });
     }
 
     #[test]
-    fn parse_addr() {
-        assert_nom_err(addr, Span::new("$10"));
-        assert_nom_ok(addr, Span::new("[10]"), "", Addr::Addr(10));
-        assert_nom_ok(addr, Span::new("[I]"), "", Addr::Pointer);
-        assert_nom_failure(addr, Span::new("[hi]"));
+    fn parse_comment() {
+        assert_nom_ok(comment, Span::new("; jkjjojojojo"), "", "; jkjjojojojo");
+        assert_nom_ok(
+            comment,
+            Span::new("; jkjjojojojo\n\rHey"),
+            "Hey",
+            "; jkjjojojojo\n\r",
+        );
+        assert_nom_ok(
+            comment,
+            Span::new("; jkjjojojojo\nHey"),
+            "Hey",
+            "; jkjjojojojo\n",
+        );
+        assert_nom_err(comment, Span::new("RET ; Return"));
     }
 
     #[test]
-    fn parse_register() {
-        assert_nom_err(register, Span::new("$10"));
-        assert_nom_err(register, Span::new("[10]"));
-        assert_nom_ok(register, Span::new("V0"), "", 0);
-        assert_nom_ok(register, Span::new("VF"), "", 0xF);
-        assert_nom_ok(register, Span::new("VFF"), "F", 0xF);
-        assert_nom_err(register, Span::new("VG"));
-        assert_nom_err(register, Span::new("V"));
-        // panic!()
-    }
-
-    #[test]
-    fn parse_arg() {
-        assert_nom_ok(arg, Span::new("$10"), "", Arg::Byte(10));
-        assert_nom_ok(arg, Span::new("VA"), "", Arg::Register(10));
-        assert_nom_ok(arg, Span::new("[10]"), "", Arg::Addr(Addr::Addr(10)));
-        assert_nom_ok(arg, Span::new("[I]AA"), "AA", Arg::Addr(Addr::Pointer));
-        assert_nom_err(arg, Span::new("AAAAAAAAAAAAAAAA"));
+    fn parse_line() {
+        assert_nom_ok_generic(line, Span::new("; jkjjojojojo"), "", |x| x.is_none());
+        assert_nom_ok_generic(line, Span::new("; jkjjojojojo\n\rHey"), "Hey", |x| {
+            x.is_none()
+        });
+        assert_nom_ok_generic(line, Span::new("; jkjjojojojo\nHey"), "Hey", |x| {
+            x.is_none()
+        });
+        assert_nom_ok_generic(line, Span::new("RET ; Return"), "", |x| {
+            x.is_some() && {
+                let x = x.unwrap();
+                let (a, b) = x.fragment();
+                a.fragment() == &"RET" && b.is_empty()
+            }
+        });
+        assert_nom_ok_generic(line, Span::new("RET ; Return\nRET"), "RET", |x| {
+            x.is_some() && {
+                let x = x.unwrap();
+                let (a, b) = x.fragment();
+                a.fragment() == &"RET" && b.is_empty()
+            }
+        });
     }
 }
