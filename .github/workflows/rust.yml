@@ -35,6 +35,6 @@ jobs:
     - name: Clippy
       run: cargo clippy
     - name: cargo deny
-      run: cargo deny
+      run: cargo deny check
     - name: fmt
       run: cargo fmt -- --check
