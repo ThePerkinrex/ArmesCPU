@@ -1,20 +1,20 @@
-use std::{num::ParseIntError, str::FromStr};
+use std::{borrow::Borrow, fmt::Debug, num::ParseIntError, str::FromStr};
 
 use nom::{
     branch::alt,
-    bytes::complete::take_till1,
+    bytes::complete::{tag, take_till, take_till1},
     character::{
-        complete::{char, not_line_ending, space0, space1},
+        complete::{alpha1, alphanumeric1, char, not_line_ending, space0, space1},
         is_newline, is_space,
     },
-    combinator::{consumed, eof, map, opt, success, value},
-    error::context,
-    multi::separated_list0,
+    combinator::{consumed, cut, eof, map, map_parser, opt, recognize, success, value, verify},
+    error::{context, ErrorKind, ParseError},
+    multi::{many0, separated_list0},
     sequence::{pair, terminated, tuple},
-    IResult,
+    IResult, Parser,
 };
 use nom_locate::LocatedSpan;
-use nom_supreme::error::ErrorTree;
+use nom_supreme::error::{BaseErrorKind, ErrorTree, Expectation};
 
 use self::arg::{arg, Arg};
 
@@ -42,6 +42,32 @@ where
     }
 }
 
+pub fn verify_fail<I: Debug + Clone, O1, O2, E: ParseError<I>, F, G>(
+    mut first: F,
+    second: G,
+) -> impl FnMut(I) -> IResult<I, O1, E>
+where
+    F: Parser<I, O1, E>,
+    G: Fn(&O2) -> bool,
+    O1: Borrow<O2> + Into<I> + Debug,
+    O2: ?Sized,
+{
+    move |input: I| {
+        //    let i = input.clone();
+        let (input, o) = first.parse(input)?;
+        //   println!("i: {:?} o: {:?}", i, o);
+
+        if second(o.borrow()) {
+            Ok((input, o))
+        } else {
+            Err(nom::Err::Failure(E::from_error_kind(
+                o.into(),
+                ErrorKind::Verify,
+            )))
+        }
+    }
+}
+
 trait FromStrRadix: Sized + FromStr + Copy {
     fn from_str_radix(x: &str, radix: u32) -> Result<Self, ParseIntError>;
 }
@@ -59,17 +85,42 @@ impl FromStrRadix for u16 {
 }
 
 pub type Span<'a, T = ()> = LocatedSpan<&'a str, T>;
-type PResult<'a, O = ()> = IResult<Span<'a>, Span<'a, O>, ErrorTree<Span<'a>>>;
+pub type PResult<'a, O = ()> = IResult<Span<'a>, Span<'a, O>, ErrorTree<Span<'a>>>;
 pub type Instr<'a> = (Span<'a>, Vec<Span<'a, Arg>>);
 
-pub fn instr(i: Span) -> PResult<Instr> {
+pub const OPCODES: &[&str] = &[
+    "NOP", "LD", "RET", "CALL", "JP", "ADD", "SUB", "SUBN", "OR", "XOR", "SE", "SNE", "SHR", "SHL",
+];
+
+fn identifier(input: Span) -> PResult {
+    recognize(pair(
+        alt((alpha1, tag("_"))),
+        many0(alt((alphanumeric1, tag("_")))),
+    ))(input)
+}
+
+pub fn instr<'a>(i: Span<'a>) -> PResult<Instr> {
     context(
         "instr",
         map(
             consumed(tuple((
-                context(
-                    "opcode",
-                    take_till1(|x| is_space(x as u8) || is_newline(x as u8)),
+                map_parser(
+                    identifier,
+                    context("opcode", |x: Span<'a>| {
+                        if OPCODES.contains(x.fragment()) {
+                            take_till(|_| false)(x)
+                        } else {
+                            Err(nom::Err::Failure(ErrorTree::Alt(
+                                OPCODES
+                                    .iter()
+                                    .map(|opcode| ErrorTree::Base {
+                                        location: x,
+                                        kind: BaseErrorKind::Expected(Expectation::Tag(*opcode)),
+                                    })
+                                    .collect(),
+                            )))
+                        }
+                    }),
                 ),
                 alt((space1, success(Span::new("")))),
                 separated_list0(tuple((char(','), opt(space0))), arg),
@@ -81,10 +132,10 @@ pub fn instr(i: Span) -> PResult<Instr> {
 
 fn eol(i: Span) -> PResult {
     context(
-        "EOL",
+        "eol",
         map(
             consumed(alt((
-                value((), pair(opt(char('\r')), char('\n'))),
+                value((), context("newline", pair(opt(char('\r')), char('\n')))),
                 value((), eof),
             ))),
             |(x, _): (Span, _)| x,

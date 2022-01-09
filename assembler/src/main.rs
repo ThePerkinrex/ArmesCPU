@@ -1,17 +1,28 @@
+use std::process::exit;
+
 use ariadne::{Color, Label, Report, ReportKind, Source};
-use assembler::parser::{lines, Span};
+use assembler::{
+    error_as_report,
+    parser::{lines, Span},
+};
 
 fn main() {
     let og = r#"
 	LD V0, V1 ; V0 = V1
-	CALL [0x1000]
-
+	NOTANOPCODE
+	CALL [0x1000] AAAA
 
 	RET
 	"#;
     let s = Span::new(og);
 
-    let (_, r) = lines(s).unwrap();
+    let (_, r) = match lines(s).map_err(error_as_report) {
+        Ok(x) => x,
+        Err(e) => {
+            e.print(Source::from(og)).unwrap();
+            exit(1)
+        }
+    };
     for e in r {
         let off = e.location_offset();
         let frag = *e.fragment();
