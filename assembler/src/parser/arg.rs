@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use nom::{
     branch::alt,
     bytes::complete::{tag, take},
@@ -13,10 +15,9 @@ use super::{map_res_fail, FromStrRadix, PResult, Span};
 
 fn binary<N: FromStrRadix>(input: Span) -> PResult<N> {
     let (r, (_, n)) = tuple((
-        alt((tag("0b"), tag("0B"))),
-        cut(context(
-            N::NAME,
-            map_res(
+        context("binary_prefix", alt((tag("0b"), tag("0B")))),
+        cut(
+            context("binary", map_res(
                 recognize(many1(terminated(one_of("01"), many0(char('_'))))),
                 |x: Span| N::from_str_radix(x.fragment(), 2).map(|n| x.map(|_| n)),
             ),
@@ -27,34 +28,34 @@ fn binary<N: FromStrRadix>(input: Span) -> PResult<N> {
 
 fn hex<N: FromStrRadix>(input: Span) -> PResult<N> {
     let (r, (_, n)) = tuple((
-        alt((tag("0x"), tag("0X"))),
-        cut(context(
-            N::NAME,
-            map_res(
-                recognize(many1(terminated(hex_digit1, many0(char('_'))))),
-                |x: Span| N::from_str_radix(x.fragment(), 16).map(|n| x.map(|_| n)),
-            ),
-        )),
+        context("hex_prefix", alt((tag("0x"), tag("0X")))),
+        cut(context("hex", map_res(
+            recognize(many1(terminated(hex_digit1, many0(char('_'))))),
+            |x: Span| N::from_str_radix(x.fragment(), 16).map(|n| x.map(|_| n)),
+        ))),
     ))(input)?;
     Ok((r, n))
 }
 
-fn decimal<N: FromStrRadix>(input: Span) -> PResult<N> {
-    context(
-        N::NAME,
-        map_res_fail(
-            recognize(many1(terminated(digit1, many0(char('_'))))),
-            |x: Span| N::from_str(x.fragment()).map(|n| x.map(|_| n)),
-        ),
-    )(input)
+fn decimal<N: FromStrRadix>(input: Span) -> PResult<N>
+where
+    <N as FromStr>::Err: std::error::Error + Send + Sync + 'static,
+{
+    context("decimal", map_res_fail(
+        recognize(many1(terminated(digit1, many0(char('_'))))),
+        |x: Span| N::from_str(x.fragment()).map(|n| x.map(|_| n)),
+    ))(input)
 }
 
-fn number<N: FromStrRadix>(n: Span) -> PResult<N> {
+fn number<N: FromStrRadix>(n: Span) -> PResult<N>
+where
+    <N as FromStr>::Err: std::error::Error + Send + Sync + 'static,
+{
     alt((binary, hex, decimal))(n)
 }
 
 fn constant_byte(i: Span) -> PResult<u8> {
-    let (r, (_, n)) = tuple((tag("$"), number))(i)?;
+    let (r, (_, n)) = context("constant", tuple((char('$'), number)))(i)?;
     Ok((r, n))
 }
 
@@ -65,27 +66,27 @@ pub enum Addr {
 }
 
 fn addr(i: Span) -> PResult<Addr> {
-    delimited(
+    context("address", delimited(
         char('['),
         cut(context(
-            "address (2 bytes)",
+            "address number",
             alt((
                 map(number, |s: Span<u16>| s.map(Addr::Addr)),
-                map(tag("I"), |x: Span| x.map(|_| Addr::Pointer)),
+                map(context("pointer", tag("I")), |x: Span| x.map(|_| Addr::Pointer)),
             )),
         )),
         char(']'),
-    )(i)
+    ))(i)
 }
 
 fn register(i: Span) -> PResult<u8> {
-    preceded(
-        tag("V"),
+    context("register", preceded(
+        char('V'),
         map(
             map_parser(take(1usize), all_consuming(hex_digit1)),
             |x: Span| x.map(|_| u8::from_str_radix(x.fragment(), 16).unwrap()),
         ),
-    )(i)
+    ))(i)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,11 +97,11 @@ pub enum Arg {
 }
 
 pub fn arg(i: Span) -> PResult<Arg> {
-    alt((
+    context("arg", alt((
         map(constant_byte, |x| x.map(Arg::Byte)),
         map(addr, |x| x.map(Arg::Addr)),
         map(register, |x| x.map(Arg::Register)),
-    ))(i)
+    )))(i)
 }
 
 #[cfg(test)]
@@ -131,6 +132,7 @@ mod tests {
         assert_nom_ok_extra(constant_byte, Span::new("$0x10 hi"), " hi", 0x10);
         assert_nom_err(constant_byte, Span::new("0b10"));
         assert_nom_err(constant_byte, Span::new("[0b10]"));
+        // panic!()
     }
 
     #[test]
@@ -160,5 +162,6 @@ mod tests {
         assert_nom_ok_extra(arg, Span::new("[10]"), "", Arg::Addr(Addr::Addr(10)));
         assert_nom_ok_extra(arg, Span::new("[I]AA"), "AA", Arg::Addr(Addr::Pointer));
         assert_nom_err(arg, Span::new("AAAAAAAAAAAAAAAA"));
+        // panic!()
     }
 }

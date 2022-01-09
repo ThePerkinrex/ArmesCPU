@@ -10,9 +10,10 @@ use nom::{
     combinator::{consumed, map, opt, success, eof, value},
     multi::separated_list0,
     sequence::{pair, terminated, tuple},
-    IResult,
+    IResult, error::context,
 };
 use nom_locate::LocatedSpan;
+use nom_supreme::error::ErrorTree;
 
 use self::arg::{arg, Arg};
 
@@ -42,62 +43,57 @@ where
 
 trait FromStrRadix: Sized + FromStr + Copy {
     fn from_str_radix(x: &str, radix: u32) -> Result<Self, ParseIntError>;
-    const NAME: &'static str;
 }
 
 impl FromStrRadix for u8 {
     fn from_str_radix(x: &str, radix: u32) -> Result<Self, ParseIntError> {
         Self::from_str_radix(x, radix)
     }
-
-    const NAME: &'static str = "byte";
 }
 
 impl FromStrRadix for u16 {
     fn from_str_radix(x: &str, radix: u32) -> Result<Self, ParseIntError> {
         Self::from_str_radix(x, radix)
     }
-
-    const NAME: &'static str = "word";
 }
 
 pub type Span<'a, T=()> = LocatedSpan<&'a str, T>;
-type PResult<'a, O=()> = IResult<Span<'a>, Span<'a, O>>;
+type PResult<'a, O=()> = IResult<Span<'a>, Span<'a, O>, ErrorTree<Span<'a>>>;
 pub type Instr<'a> = (Span<'a>, Vec<Span<'a, Arg>>);
 
 pub fn instr(i: Span) -> PResult<Instr> {
-    map(
+    context("instr", map(
         consumed(tuple((
-            take_till1(|x| is_space(x as u8) || is_newline(x as u8)),
+            context("opcode", take_till1(|x| is_space(x as u8) || is_newline(x as u8))),
             alt((space1, success(Span::new("")))),
             separated_list0(tuple((char(','), opt(space0))), arg),
         ))),
         |(c, (s, _, v))| c.map(|_| (s, v.clone())),
-    )(i)
-}
-
-fn eol(i: Span) -> PResult {
-    map(
-        consumed(alt((value((), pair(opt(char('\r')), char('\n'))), value((), eof)))),
-        |(x, _): (Span, _)| x,
-    )(i)
-}
-
-pub fn comment(i: Span) -> PResult {
-    map(
-        consumed(tuple((char(';'), not_line_ending))),
-        |(x, _): (Span, _)| x,
-    )(i)
-}
-
-pub fn line(i: Span) -> IResult<Span, Option<Span<Instr>>> {
-    alt((
-        map(tuple((space0, comment)), |_| None),
-        map(tuple((space0, opt(instr), opt(pair(space0, comment)))), |(_, x, _)| x),
     ))(i)
 }
 
-pub fn lines(i: Span) -> IResult<Span, Vec<Span<Instr>>> {
+fn eol(i: Span) -> PResult {
+    context("EOL", map(
+        consumed(alt((value((), pair(opt(char('\r')), char('\n'))), value((), eof)))),
+        |(x, _): (Span, _)| x,
+    ))(i)
+}
+
+pub fn comment(i: Span) -> PResult {
+    context("comment", map(
+        consumed(tuple((char(';'), not_line_ending))),
+        |(x, _): (Span, _)| x,
+    ))(i)
+}
+
+pub fn line(i: Span) -> IResult<Span, Option<Span<Instr>>, ErrorTree<Span>> {
+    context("line", alt((
+        map(tuple((space0, comment)), |_| None),
+        map(tuple((space0, opt(instr), opt(pair(space0, comment)))), |(_, x, _)| x),
+    )))(i)
+}
+
+pub fn lines(i: Span) -> IResult<Span, Vec<Span<Instr>>, ErrorTree<Span>> {
     let mut v = Vec::new();
     let (mut rest, (_,  mut l)) = consumed(terminated(line, eol))(i)?;
     loop {
@@ -115,7 +111,7 @@ pub fn lines(i: Span) -> IResult<Span, Vec<Span<Instr>>> {
                 }
             }
             e => {
-                println!("Error: {:?}", e);
+                // println!("Error: {:?}", e);
                 e?;
             }
         };
@@ -127,7 +123,8 @@ pub fn lines(i: Span) -> IResult<Span, Vec<Span<Instr>>> {
 mod tests {
     use std::fmt::Debug;
 
-    use nom::{error::Error, IResult};
+    use nom::IResult;
+    use nom_supreme::error::ErrorTree;
 
     use super::{arg::Arg, comment, instr, line, PResult, Span};
 
@@ -140,20 +137,8 @@ mod tests {
     ) {
         let r = f(i);
         match &r {
-            Err(nom::Err::Failure(Error { input, code })) => println!(
-                "Fail at {:?} {}:{}:\n\t{}",
-                code,
-                input.location_line(),
-                input.get_utf8_column(),
-                input.fragment()
-            ),
-            Err(nom::Err::Error(Error { input, code })) => println!(
-                "Error at {:?} {}:{}:\n\t{}",
-                code,
-                input.location_line(),
-                input.get_utf8_column(),
-                input.fragment()
-            ),
+            Err(nom::Err::Failure(e)) => println!("Fail {}", e),
+            Err(nom::Err::Error(e)) => println!("Error {}", e),
             _ => (),
         };
         assert!(matches!(r, Err(nom::Err::Error(_))));
@@ -168,20 +153,8 @@ mod tests {
     ) {
         let r = f(i);
         match &r {
-            Err(nom::Err::Failure(Error { input, code })) => println!(
-                "Fail at {:?} {}:{}:\n\t{}",
-                code,
-                input.location_line(),
-                input.get_utf8_column(),
-                input.fragment()
-            ),
-            Err(nom::Err::Error(Error { input, code })) => println!(
-                "Error at {:?} {}:{}:\n\t{}",
-                code,
-                input.location_line(),
-                input.get_utf8_column(),
-                input.fragment()
-            ),
+            Err(nom::Err::Failure(e)) => println!("Fail {}", e),
+            Err(nom::Err::Error(e)) => println!("Error {}", e),
             _ => (),
         };
         assert!(matches!(r, Err(nom::Err::Failure(_))));
@@ -199,20 +172,8 @@ mod tests {
     ) {
         let r = f(i);
         match &r {
-            Err(nom::Err::Failure(Error { input, code })) => println!(
-                "Fail at {:?} {}:{}:\n\t{}",
-                code,
-                input.location_line(),
-                input.get_utf8_column(),
-                input.fragment()
-            ),
-            Err(nom::Err::Error(Error { input, code })) => println!(
-                "Error at {:?} {}:{}:\n\t{}",
-                code,
-                input.location_line(),
-                input.get_utf8_column(),
-                input.fragment()
-            ),
+            Err(nom::Err::Failure(e)) => println!("Fail {}", e),
+            Err(nom::Err::Error(e)) => println!("Error {}", e),
             _ => (),
         };
         assert!(r.is_ok());
@@ -252,7 +213,7 @@ mod tests {
 
     pub fn assert_nom_ok_generic<'a,
         O: Debug,
-        F: Fn(Span<'a>) -> IResult<Span<'a>, O>,
+        F: Fn(Span<'a>) -> IResult<Span<'a>, O, ErrorTree<Span<'a>>>,
         C: Fn(O) -> bool,
     >(
         f: F,
@@ -262,20 +223,8 @@ mod tests {
     ) {
         let r = f(i);
         match &r {
-            Err(nom::Err::Failure(Error { input, code })) => println!(
-                "Fail at {:?} {}:{}:\n\t{}",
-                code,
-                input.location_line(),
-                input.get_utf8_column(),
-                input.fragment()
-            ),
-            Err(nom::Err::Error(Error { input, code })) => println!(
-                "Error at {:?} {}:{}:\n\t{}",
-                code,
-                input.location_line(),
-                input.get_utf8_column(),
-                input.fragment()
-            ),
+            Err(nom::Err::Failure(e)) => println!("Fail {}", e),
+            Err(nom::Err::Error(e)) => println!("Error {}", e),
             _ => (),
         };
         println!("Should be ok: {:?}", r);
