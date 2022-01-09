@@ -16,8 +16,9 @@ use super::{map_res_fail, FromStrRadix, PResult, Span};
 fn binary<N: FromStrRadix>(input: Span) -> PResult<N> {
     let (r, (_, n)) = tuple((
         context("binary_prefix", alt((tag("0b"), tag("0B")))),
-        cut(
-            context("binary", map_res(
+        cut(context(
+            "binary",
+            map_res(
                 recognize(many1(terminated(one_of("01"), many0(char('_'))))),
                 |x: Span| N::from_str_radix(x.fragment(), 2).map(|n| x.map(|_| n)),
             ),
@@ -29,10 +30,13 @@ fn binary<N: FromStrRadix>(input: Span) -> PResult<N> {
 fn hex<N: FromStrRadix>(input: Span) -> PResult<N> {
     let (r, (_, n)) = tuple((
         context("hex_prefix", alt((tag("0x"), tag("0X")))),
-        cut(context("hex", map_res(
-            recognize(many1(terminated(hex_digit1, many0(char('_'))))),
-            |x: Span| N::from_str_radix(x.fragment(), 16).map(|n| x.map(|_| n)),
-        ))),
+        cut(context(
+            "hex",
+            map_res(
+                recognize(many1(terminated(hex_digit1, many0(char('_'))))),
+                |x: Span| N::from_str_radix(x.fragment(), 16).map(|n| x.map(|_| n)),
+            ),
+        )),
     ))(input)?;
     Ok((r, n))
 }
@@ -41,10 +45,13 @@ fn decimal<N: FromStrRadix>(input: Span) -> PResult<N>
 where
     <N as FromStr>::Err: std::error::Error + Send + Sync + 'static,
 {
-    context("decimal", map_res_fail(
-        recognize(many1(terminated(digit1, many0(char('_'))))),
-        |x: Span| N::from_str(x.fragment()).map(|n| x.map(|_| n)),
-    ))(input)
+    context(
+        "decimal",
+        map_res_fail(
+            recognize(many1(terminated(digit1, many0(char('_'))))),
+            |x: Span| N::from_str(x.fragment()).map(|n| x.map(|_| n)),
+        ),
+    )(input)
 }
 
 fn number<N: FromStrRadix>(n: Span) -> PResult<N>
@@ -66,27 +73,35 @@ pub enum Addr {
 }
 
 fn addr(i: Span) -> PResult<Addr> {
-    context("address", delimited(
-        char('['),
-        cut(context(
-            "address number",
-            alt((
-                map(number, |s: Span<u16>| s.map(Addr::Addr)),
-                map(context("pointer", tag("I")), |x: Span| x.map(|_| Addr::Pointer)),
+    context(
+        "address",
+        delimited(
+            char('['),
+            cut(context(
+                "address number",
+                alt((
+                    map(number, |s: Span<u16>| s.map(Addr::Addr)),
+                    map(context("pointer", tag("I")), |x: Span| {
+                        x.map(|_| Addr::Pointer)
+                    }),
+                )),
             )),
-        )),
-        char(']'),
-    ))(i)
+            char(']'),
+        ),
+    )(i)
 }
 
 fn register(i: Span) -> PResult<u8> {
-    context("register", preceded(
-        char('V'),
-        map(
-            map_parser(take(1usize), all_consuming(hex_digit1)),
-            |x: Span| x.map(|_| u8::from_str_radix(x.fragment(), 16).unwrap()),
+    context(
+        "register",
+        preceded(
+            char('V'),
+            map(
+                map_parser(take(1usize), all_consuming(hex_digit1)),
+                |x: Span| x.map(|_| u8::from_str_radix(x.fragment(), 16).unwrap()),
+            ),
         ),
-    ))(i)
+    )(i)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,11 +112,14 @@ pub enum Arg {
 }
 
 pub fn arg(i: Span) -> PResult<Arg> {
-    context("arg", alt((
-        map(constant_byte, |x| x.map(Arg::Byte)),
-        map(addr, |x| x.map(Arg::Addr)),
-        map(register, |x| x.map(Arg::Register)),
-    )))(i)
+    context(
+        "arg",
+        alt((
+            map(constant_byte, |x| x.map(Arg::Byte)),
+            map(addr, |x| x.map(Arg::Addr)),
+            map(register, |x| x.map(Arg::Register)),
+        )),
+    )(i)
 }
 
 #[cfg(test)]

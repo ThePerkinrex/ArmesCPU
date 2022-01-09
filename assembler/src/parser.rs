@@ -7,10 +7,11 @@ use nom::{
         complete::{char, not_line_ending, space0, space1},
         is_newline, is_space,
     },
-    combinator::{consumed, map, opt, success, eof, value},
+    combinator::{consumed, eof, map, opt, success, value},
+    error::context,
     multi::separated_list0,
     sequence::{pair, terminated, tuple},
-    IResult, error::context,
+    IResult,
 };
 use nom_locate::LocatedSpan;
 use nom_supreme::error::ErrorTree;
@@ -57,45 +58,66 @@ impl FromStrRadix for u16 {
     }
 }
 
-pub type Span<'a, T=()> = LocatedSpan<&'a str, T>;
-type PResult<'a, O=()> = IResult<Span<'a>, Span<'a, O>, ErrorTree<Span<'a>>>;
+pub type Span<'a, T = ()> = LocatedSpan<&'a str, T>;
+type PResult<'a, O = ()> = IResult<Span<'a>, Span<'a, O>, ErrorTree<Span<'a>>>;
 pub type Instr<'a> = (Span<'a>, Vec<Span<'a, Arg>>);
 
 pub fn instr(i: Span) -> PResult<Instr> {
-    context("instr", map(
-        consumed(tuple((
-            context("opcode", take_till1(|x| is_space(x as u8) || is_newline(x as u8))),
-            alt((space1, success(Span::new("")))),
-            separated_list0(tuple((char(','), opt(space0))), arg),
-        ))),
-        |(c, (s, _, v))| c.map(|_| (s, v.clone())),
-    ))(i)
+    context(
+        "instr",
+        map(
+            consumed(tuple((
+                context(
+                    "opcode",
+                    take_till1(|x| is_space(x as u8) || is_newline(x as u8)),
+                ),
+                alt((space1, success(Span::new("")))),
+                separated_list0(tuple((char(','), opt(space0))), arg),
+            ))),
+            |(c, (s, _, v))| c.map(|_| (s, v.clone())),
+        ),
+    )(i)
 }
 
 fn eol(i: Span) -> PResult {
-    context("EOL", map(
-        consumed(alt((value((), pair(opt(char('\r')), char('\n'))), value((), eof)))),
-        |(x, _): (Span, _)| x,
-    ))(i)
+    context(
+        "EOL",
+        map(
+            consumed(alt((
+                value((), pair(opt(char('\r')), char('\n'))),
+                value((), eof),
+            ))),
+            |(x, _): (Span, _)| x,
+        ),
+    )(i)
 }
 
 pub fn comment(i: Span) -> PResult {
-    context("comment", map(
-        consumed(tuple((char(';'), not_line_ending))),
-        |(x, _): (Span, _)| x,
-    ))(i)
+    context(
+        "comment",
+        map(
+            consumed(tuple((char(';'), not_line_ending))),
+            |(x, _): (Span, _)| x,
+        ),
+    )(i)
 }
 
 pub fn line(i: Span) -> IResult<Span, Option<Span<Instr>>, ErrorTree<Span>> {
-    context("line", alt((
-        map(tuple((space0, comment)), |_| None),
-        map(tuple((space0, opt(instr), opt(pair(space0, comment)))), |(_, x, _)| x),
-    )))(i)
+    context(
+        "line",
+        alt((
+            map(tuple((space0, comment)), |_| None),
+            map(
+                tuple((space0, opt(instr), opt(pair(space0, comment)))),
+                |(_, x, _)| x,
+            ),
+        )),
+    )(i)
 }
 
 pub fn lines(i: Span) -> IResult<Span, Vec<Span<Instr>>, ErrorTree<Span>> {
     let mut v = Vec::new();
-    let (mut rest, (_,  mut l)) = consumed(terminated(line, eol))(i)?;
+    let (mut rest, (_, mut l)) = consumed(terminated(line, eol))(i)?;
     loop {
         // println!("Consumed: {:?}; Line: {:?}", con, l);
         if let Some(x) = &l {
@@ -128,13 +150,7 @@ mod tests {
 
     use super::{arg::Arg, comment, instr, line, PResult, Span};
 
-    pub fn assert_nom_err<
-        O: PartialEq + Debug,
-        F: Fn(Span) -> PResult<O>,
-    >(
-        f: F,
-        i: Span,
-    ) {
+    pub fn assert_nom_err<O: PartialEq + Debug, F: Fn(Span) -> PResult<O>>(f: F, i: Span) {
         let r = f(i);
         match &r {
             Err(nom::Err::Failure(e)) => println!("Fail {}", e),
@@ -144,13 +160,7 @@ mod tests {
         assert!(matches!(r, Err(nom::Err::Error(_))));
     }
 
-    pub fn assert_nom_failure<
-        O: PartialEq + Debug,
-        F: Fn(Span) -> PResult<O>,
-    >(
-        f: F,
-        i: Span,
-    ) {
+    pub fn assert_nom_failure<O: PartialEq + Debug, F: Fn(Span) -> PResult<O>>(f: F, i: Span) {
         let r = f(i);
         match &r {
             Err(nom::Err::Failure(e)) => println!("Fail {}", e),
@@ -160,10 +170,7 @@ mod tests {
         assert!(matches!(r, Err(nom::Err::Failure(_))));
     }
 
-    pub fn assert_nom_ok<
-        O: PartialEq + Debug,
-        F: Fn(Span) -> PResult<O>,
-    >(
+    pub fn assert_nom_ok<O: PartialEq + Debug, F: Fn(Span) -> PResult<O>>(
         f: F,
         i: Span,
         res: &str,
@@ -187,10 +194,7 @@ mod tests {
         }
     }
 
-    pub fn assert_nom_ok_extra<
-        O: PartialEq + Debug,
-        F: Fn(Span) -> PResult<O>,
-    >(
+    pub fn assert_nom_ok_extra<O: PartialEq + Debug, F: Fn(Span) -> PResult<O>>(
         f: F,
         i: Span,
         res: &str,
@@ -199,10 +203,7 @@ mod tests {
         assert_nom_ok(f, i, res, None, Some(v))
     }
 
-    pub fn assert_nom_ok_fragment<
-        O: PartialEq + Debug,
-        F: Fn(Span) -> PResult<O>,
-    >(
+    pub fn assert_nom_ok_fragment<O: PartialEq + Debug, F: Fn(Span) -> PResult<O>>(
         f: F,
         i: Span,
         res: &str,
@@ -211,7 +212,8 @@ mod tests {
         assert_nom_ok(f, i, res, Some(v), None)
     }
 
-    pub fn assert_nom_ok_generic<'a,
+    pub fn assert_nom_ok_generic<
+        'a,
         O: Debug,
         F: Fn(Span<'a>) -> IResult<Span<'a>, O, ErrorTree<Span<'a>>>,
         C: Fn(O) -> bool,
