@@ -1,20 +1,18 @@
-use std::{borrow::Borrow, fmt::Debug, num::ParseIntError, str::FromStr};
+use std::{borrow::Borrow, fmt::Debug};
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_till, take_till1},
-    character::{
-        complete::{alpha1, alphanumeric1, char, not_line_ending, space0, space1},
-        is_newline, is_space,
-    },
-    combinator::{consumed, cut, eof, map, map_parser, opt, recognize, success, value, verify},
-    error::{context, ErrorKind, ParseError},
+    character::complete::{alpha1, alphanumeric1, char, not_line_ending, space0, space1},
+    combinator::{consumed, cut, eof, map, map_parser, opt, recognize, success, value},
+    error::{ErrorKind, ParseError},
     multi::{many0, separated_list0},
     sequence::{pair, terminated, tuple},
-    IResult, Parser,
+    Compare, CompareResult, IResult, InputLength, InputTake, Parser,
 };
 use nom_locate::LocatedSpan;
-use nom_supreme::error::{BaseErrorKind, ErrorTree, Expectation};
+// use nom_supreme::error::{BaseErrorKind, ErrorTree, Expectation};
+
+use crate::error::{context, BaseErrorKind, Error, Expectation};
 
 use self::arg::{arg, Arg};
 
@@ -68,29 +66,53 @@ where
     }
 }
 
-trait FromStrRadix: Sized + FromStr + Copy {
-    fn from_str_radix(x: &str, radix: u32) -> Result<Self, ParseIntError>;
-}
-
-impl FromStrRadix for u8 {
-    fn from_str_radix(x: &str, radix: u32) -> Result<Self, ParseIntError> {
-        Self::from_str_radix(x, radix)
-    }
-}
-
-impl FromStrRadix for u16 {
-    fn from_str_radix(x: &str, radix: u32) -> Result<Self, ParseIntError> {
-        Self::from_str_radix(x, radix)
-    }
-}
-
 pub type Span<'a, T = ()> = LocatedSpan<&'a str, T>;
-pub type PResult<'a, O = ()> = IResult<Span<'a>, Span<'a, O>, ErrorTree<Span<'a>>>;
+pub type PResult<'a, O = ()> = IResult<Span<'a>, Span<'a, O>, Error<Span<'a>>>;
 pub type Instr<'a> = (Span<'a>, Vec<Span<'a, Arg>>);
+
+struct Choice<I: Iterator>(I);
+impl<I: Clone, O, E: ParseError<I>, T: Parser<I, O, E>, Iter: Iterator<Item = T>>
+    nom::branch::Alt<I, O, E> for Choice<Iter>
+{
+    fn choice(&mut self, input: I) -> IResult<I, O, E> {
+        let mut err = None;
+        for mut p in &mut self.0 {
+            match p.parse(input.clone()) {
+                Err(nom::Err::Error(e)) => {
+                    if err.is_none() {
+                        err = Some(e)
+                    } else {
+                        err = err.map(|err| err.or(e))
+                    }
+                }
+                r => return r,
+            }
+        }
+        assert!(err.is_some(), "Empty iterator cannot opt for a choice");
+        Err(nom::Err::Error(err.unwrap()))
+    }
+}
 
 pub const OPCODES: &[&str] = &[
     "NOP", "LD", "RET", "CALL", "JP", "ADD", "SUB", "SUBN", "OR", "XOR", "SE", "SNE", "SHR", "SHL",
 ];
+
+pub fn tag<Input>(tag: &'static str) -> impl Fn(Input) -> IResult<Input, Input, Error<Input>>
+where
+    Input: InputTake + Compare<&'static str>,
+{
+    move |i: Input| {
+        let tag_len = tag.input_len();
+        let res: IResult<_, _, Error<Input>> = match i.compare(tag) {
+            CompareResult::Ok => Ok(i.take_split(tag_len)),
+            _ => Err(nom::Err::Error(Error::Base {
+                input: i,
+                kind: BaseErrorKind::Expected(Expectation::Tag(tag)),
+            })),
+        };
+        res
+    }
+}
 
 fn identifier(input: Span) -> PResult {
     recognize(pair(
@@ -99,31 +121,20 @@ fn identifier(input: Span) -> PResult {
     ))(input)
 }
 
-pub fn instr<'a>(i: Span<'a>) -> PResult<Instr> {
+pub fn instr(i: Span) -> PResult<Instr> {
     context(
         "instr",
         map(
             consumed(tuple((
                 map_parser(
                     identifier,
-                    context("opcode", |x: Span<'a>| {
-                        if OPCODES.contains(x.fragment()) {
-                            take_till(|_| false)(x)
-                        } else {
-                            Err(nom::Err::Failure(ErrorTree::Alt(
-                                OPCODES
-                                    .iter()
-                                    .map(|opcode| ErrorTree::Base {
-                                        location: x,
-                                        kind: BaseErrorKind::Expected(Expectation::Tag(*opcode)),
-                                    })
-                                    .collect(),
-                            )))
-                        }
-                    }),
+                    cut(alt(Choice(OPCODES.iter().map(|x: &&'static str| tag(*x))))),
                 ),
                 alt((space1, success(Span::new("")))),
-                separated_list0(tuple((char(','), opt(space0))), arg),
+                separated_list0(
+                    |i2| dbg!(tuple((char(','), space0))(dbg!(i2))),
+                    |i| dbg!(arg(dbg!(i))),
+                ),
             ))),
             |(c, (s, _, v))| c.map(|_| (s, v.clone())),
         ),
@@ -153,7 +164,7 @@ pub fn comment(i: Span) -> PResult {
     )(i)
 }
 
-pub fn line(i: Span) -> IResult<Span, Option<Span<Instr>>, ErrorTree<Span>> {
+pub fn line(i: Span) -> IResult<Span, Option<Span<Instr>>, Error<Span>> {
     context(
         "line",
         alt((
@@ -166,7 +177,7 @@ pub fn line(i: Span) -> IResult<Span, Option<Span<Instr>>, ErrorTree<Span>> {
     )(i)
 }
 
-pub fn lines(i: Span) -> IResult<Span, Vec<Span<Instr>>, ErrorTree<Span>> {
+pub fn lines(i: Span) -> IResult<Span, Vec<Span<Instr>>, Error<Span>> {
     let mut v = Vec::new();
     let (mut rest, (_, mut l)) = consumed(terminated(line, eol))(i)?;
     loop {
@@ -197,7 +208,8 @@ mod tests {
     use std::fmt::Debug;
 
     use nom::IResult;
-    use nom_supreme::error::ErrorTree;
+
+    use crate::error::Error;
 
     use super::{arg::Arg, comment, instr, line, PResult, Span};
 
@@ -266,7 +278,7 @@ mod tests {
     pub fn assert_nom_ok_generic<
         'a,
         O: Debug,
-        F: Fn(Span<'a>) -> IResult<Span<'a>, O, ErrorTree<Span<'a>>>,
+        F: Fn(Span<'a>) -> IResult<Span<'a>, O, Error<Span<'a>>>,
         C: Fn(O) -> bool,
     >(
         f: F,

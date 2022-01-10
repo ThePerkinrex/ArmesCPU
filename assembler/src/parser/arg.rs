@@ -1,17 +1,18 @@
-use std::str::FromStr;
+// use std::str::FromStr;
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take},
+    bytes::complete::take,
     character::complete::char,
     character::complete::{digit1, hex_digit1, one_of},
     combinator::{all_consuming, cut, map, map_parser, map_res, recognize},
-    error::context,
     multi::{many0, many1},
     sequence::{delimited, preceded, terminated, tuple},
 };
 
-use super::{map_res_fail, FromStrRadix, PResult, Span};
+use crate::error::context;
+
+use super::{super::from_str_radix::FromStrRadix, map_res_fail, tag, PResult, Span};
 
 fn binary<N: FromStrRadix>(input: Span) -> PResult<N> {
     let (r, (_, n)) = tuple((
@@ -41,23 +42,17 @@ fn hex<N: FromStrRadix>(input: Span) -> PResult<N> {
     Ok((r, n))
 }
 
-fn decimal<N: FromStrRadix>(input: Span) -> PResult<N>
-where
-    <N as FromStr>::Err: std::error::Error + Send + Sync + 'static,
-{
+fn decimal<N: FromStrRadix>(input: Span) -> PResult<N> {
     context(
         "decimal",
         map_res_fail(
             recognize(many1(terminated(digit1, many0(char('_'))))),
-            |x: Span| N::from_str(x.fragment()).map(|n| x.map(|_| n)),
+            |x: Span| N::from_str_radix(x.fragment(), 10).map(|n| x.map(|_| n)),
         ),
     )(input)
 }
 
-fn number<N: FromStrRadix>(n: Span) -> PResult<N>
-where
-    <N as FromStr>::Err: std::error::Error + Send + Sync + 'static,
-{
+fn number<N: FromStrRadix>(n: Span) -> PResult<N> {
     alt((binary, hex, decimal))(n)
 }
 
