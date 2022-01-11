@@ -7,47 +7,51 @@ use nom::{
     character::complete::{digit1, hex_digit1, one_of},
     combinator::{all_consuming, cut, map, map_parser, map_res, recognize},
     multi::{many0, many1},
-    sequence::{delimited, preceded, terminated, tuple},
+    sequence::{delimited, preceded, terminated},
 };
 
-use crate::error::context;
+use crate::error::{context, Context};
 
-use super::{super::from_str_radix::FromStrRadix, map_res_fail, tag, PResult, Span};
+use super::{super::from_str_radix::FromStrRadix, tag, take_all, PResult, Span};
 
 fn binary<N: FromStrRadix>(input: Span) -> PResult<N> {
-    let (r, (_, n)) = tuple((
-        context("binary_prefix", alt((tag("0b"), tag("0B")))),
-        cut(context(
-            "binary",
-            map_res(
+    context(
+        Context::Bin,
+        preceded(
+            alt((tag("0b"), tag("0B"))),
+            cut(map_parser(
                 recognize(many1(terminated(one_of("01"), many0(char('_'))))),
-                |x: Span| N::from_str_radix(x.fragment(), 2).map(|n| x.map(|_| n)),
-            ),
-        )),
-    ))(input)?;
-    Ok((r, n))
+                map_res(take_all, |x: Span| {
+                    N::from_str_radix(x.fragment(), 2).map(|n| x.map(|_| n))
+                }),
+            )),
+        ),
+    )(input)
 }
 
 fn hex<N: FromStrRadix>(input: Span) -> PResult<N> {
-    let (r, (_, n)) = tuple((
-        context("hex_prefix", alt((tag("0x"), tag("0X")))),
-        cut(context(
-            "hex",
-            map_res(
+    context(
+        Context::Hex,
+        preceded(
+            alt((tag("0x"), tag("0X"))),
+            cut(map_parser(
                 recognize(many1(terminated(hex_digit1, many0(char('_'))))),
-                |x: Span| N::from_str_radix(x.fragment(), 16).map(|n| x.map(|_| n)),
-            ),
-        )),
-    ))(input)?;
-    Ok((r, n))
+                map_res(take_all, |x: Span| {
+                    N::from_str_radix(x.fragment(), 16).map(|n| x.map(|_| n))
+                }),
+            )),
+        ),
+    )(input)
 }
 
 fn decimal<N: FromStrRadix>(input: Span) -> PResult<N> {
     context(
-        "decimal",
-        map_res_fail(
+        Context::Dec,
+        map_parser(
             recognize(many1(terminated(digit1, many0(char('_'))))),
-            |x: Span| N::from_str_radix(x.fragment(), 10).map(|n| x.map(|_| n)),
+            cut(map_res(take_all, |x: Span| {
+                N::from_str_radix(x.fragment(), 10).map(|n| x.map(|_| n))
+            })),
         ),
     )(input)
 }
@@ -57,8 +61,7 @@ fn number<N: FromStrRadix>(n: Span) -> PResult<N> {
 }
 
 fn constant_byte(i: Span) -> PResult<u8> {
-    let (r, (_, n)) = context("constant", tuple((char('$'), number)))(i)?;
-    Ok((r, n))
+    context(Context::Byte, preceded(char('$'), number))(i)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,18 +72,13 @@ pub enum Addr {
 
 fn addr(i: Span) -> PResult<Addr> {
     context(
-        "address",
+        Context::Addr,
         delimited(
             char('['),
-            cut(context(
-                "address number",
-                alt((
-                    map(number, |s: Span<u16>| s.map(Addr::Addr)),
-                    map(context("pointer", tag("I")), |x: Span| {
-                        x.map(|_| Addr::Pointer)
-                    }),
-                )),
-            )),
+            cut(alt((
+                map(number, |s: Span<u16>| s.map(Addr::Addr)),
+                map(tag("I"), |x: Span| x.map(|_| Addr::Pointer)),
+            ))),
             char(']'),
         ),
     )(i)
@@ -88,13 +86,13 @@ fn addr(i: Span) -> PResult<Addr> {
 
 fn register(i: Span) -> PResult<u8> {
     context(
-        "register",
+        Context::Register,
         preceded(
             char('V'),
-            map(
+            cut(map(
                 map_parser(take(1usize), all_consuming(hex_digit1)),
                 |x: Span| x.map(|_| u8::from_str_radix(x.fragment(), 16).unwrap()),
-            ),
+            )),
         ),
     )(i)
 }
@@ -108,7 +106,7 @@ pub enum Arg {
 
 pub fn arg(i: Span) -> PResult<Arg> {
     context(
-        "arg",
+        Context::Arg,
         alt((
             map(constant_byte, |x| x.map(Arg::Byte)),
             map(addr, |x| x.map(Arg::Addr)),
@@ -163,8 +161,8 @@ mod tests {
         assert_nom_ok_extra(register, Span::new("V0"), "", 0);
         assert_nom_ok_extra(register, Span::new("VF"), "", 0xF);
         assert_nom_ok_extra(register, Span::new("VFF"), "F", 0xF);
-        assert_nom_err(register, Span::new("VG"));
-        assert_nom_err(register, Span::new("V"));
+        assert_nom_failure(register, Span::new("VG"));
+        assert_nom_failure(register, Span::new("V"));
         // panic!()
     }
 

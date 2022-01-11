@@ -1,13 +1,16 @@
 use std::process::exit;
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
-use assembler::parser::{lines, Span};
+use assembler::{
+    error_as_reports,
+    parser::{lines, Span},
+};
 
 fn main() {
     let og = r#"
-	LD V0, $0x100 ; V0 = V1
+	LD V0, $0x10 ; V0 = V1
 	CALL [0x1000] ; AAAA
-
+NOTANOPCODE
 	RET
 	"#;
     let s = Span::new(og);
@@ -15,8 +18,10 @@ fn main() {
     let (_, r) = match lines(s) {
         Ok(x) => x,
         Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
-            // e.print(Source::from(og)).unwrap();
             println!("{}", e);
+            for e in error_as_reports(nom::Err::Error(e), ()) {
+                e.print(Source::from(og)).unwrap();
+            }
             exit(1)
         }
         Err(e) => {

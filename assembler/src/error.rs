@@ -126,12 +126,14 @@ impl Display for BaseErrorKind {
 #[derive(Debug)]
 pub enum StackContext {
     Kind(BaseErrorKind),
+    Ctx(Context),
 }
 
 impl Display for StackContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             StackContext::Kind(k) => write!(f, "{}", k),
+            StackContext::Ctx(c) => write!(f, "{:?}", c),
         }
     }
 }
@@ -260,12 +262,67 @@ impl<I: std::fmt::Debug> Display for Error<I> {
     }
 }
 
-pub fn context<I: Clone, E, F, O>(
-    _: &'static str,
+pub trait ErrorContext<I> {
+    fn add_context(input: I, ctx: Context, other: Self) -> Self;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Context {
+    Instr,
+    Comment,
+    Eol,
+    Line,
+    Opcode,
+    Arg,
+    Register,
+    Addr,
+    Byte,
+    Hex,
+    Bin,
+    Dec,
+}
+
+impl<I> ErrorContext<I> for Error<I> {
+    fn add_context(input: I, ctx: Context, other: Self) -> Self {
+        match ctx {
+            Context::Eol => Self::Base {
+                kind: BaseErrorKind::Expected(Expectation::Eol),
+                input,
+            },
+            ctx => {
+                let context = (input, StackContext::Ctx(ctx));
+                match other {
+                    // This is already a stack, so push on to it
+                    Self::Stack { mut stack, base } => Self::Stack {
+                        base,
+                        stack: {
+                            stack.push(context);
+                            stack
+                        },
+                    },
+
+                    // This isn't a stack, create a new stack
+                    base => Self::Stack {
+                        base: Box::new(base),
+                        stack: vec![context],
+                    },
+                }
+            }
+        }
+    }
+}
+
+pub fn context<I: Clone, E: ErrorContext<I>, F, O>(
+    ctx: Context,
     mut f: F,
 ) -> impl FnMut(I) -> nom::IResult<I, O, E>
 where
     F: nom::Parser<I, O, E>,
 {
-    move |i: I| f.parse(i)
+    move |i: I| match f.parse(i.clone()) {
+        Ok(o) => Ok(o),
+        Err(nom::Err::Incomplete(i)) => Err(nom::Err::Incomplete(i)),
+        Err(nom::Err::Error(e)) => Err(nom::Err::Error(E::add_context(i, ctx, e))),
+        Err(nom::Err::Failure(e)) => Err(nom::Err::Failure(E::add_context(i, ctx, e))),
+    }
 }

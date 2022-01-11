@@ -1,69 +1,26 @@
-use std::{borrow::Borrow, fmt::Debug};
-
 use nom::{
     branch::alt,
     character::complete::{alpha1, alphanumeric1, char, not_line_ending, space0, space1},
     combinator::{consumed, cut, eof, map, map_parser, opt, recognize, success, value},
-    error::{ErrorKind, ParseError},
+    error::ParseError,
     multi::{many0, separated_list0},
     sequence::{pair, terminated, tuple},
-    Compare, CompareResult, IResult, InputLength, InputTake, Parser,
+    Compare, CompareResult, IResult, InputLength, InputTake, InputTakeAtPosition, Parser,
 };
 use nom_locate::LocatedSpan;
 // use nom_supreme::error::{BaseErrorKind, ErrorTree, Expectation};
 
-use crate::error::{context, BaseErrorKind, Error, Expectation};
+use crate::error::{context, BaseErrorKind, Context, Error, Expectation};
 
 use self::arg::{arg, Arg};
 
 mod arg;
 
-pub fn map_res_fail<I: Clone, O1, O2, E: nom::error::FromExternalError<I, E2>, E2, F, G>(
-    mut parser: F,
-    mut f: G,
-) -> impl FnMut(I) -> IResult<I, O2, E>
+pub fn take_all<Input, Error: ParseError<Input>>(i: Input) -> IResult<Input, Input, Error>
 where
-    F: nom::Parser<I, O1, E>,
-    G: FnMut(O1) -> Result<O2, E2>,
+    Input: InputTakeAtPosition,
 {
-    move |input: I| {
-        let i = input.clone();
-        let (input, o1) = parser.parse(input)?;
-        match f(o1) {
-            Ok(o2) => Ok((input, o2)),
-            Err(e) => Err(nom::Err::Failure(E::from_external_error(
-                i,
-                nom::error::ErrorKind::MapRes,
-                e,
-            ))),
-        }
-    }
-}
-
-pub fn verify_fail<I: Debug + Clone, O1, O2, E: ParseError<I>, F, G>(
-    mut first: F,
-    second: G,
-) -> impl FnMut(I) -> IResult<I, O1, E>
-where
-    F: Parser<I, O1, E>,
-    G: Fn(&O2) -> bool,
-    O1: Borrow<O2> + Into<I> + Debug,
-    O2: ?Sized,
-{
-    move |input: I| {
-        //    let i = input.clone();
-        let (input, o) = first.parse(input)?;
-        //   println!("i: {:?} o: {:?}", i, o);
-
-        if second(o.borrow()) {
-            Ok((input, o))
-        } else {
-            Err(nom::Err::Failure(E::from_error_kind(
-                o.into(),
-                ErrorKind::Verify,
-            )))
-        }
-    }
+    i.split_at_position_complete(|_| false)
 }
 
 pub type Span<'a, T = ()> = LocatedSpan<&'a str, T>;
@@ -123,18 +80,18 @@ fn identifier(input: Span) -> PResult {
 
 pub fn instr(i: Span) -> PResult<Instr> {
     context(
-        "instr",
+        Context::Instr,
         map(
             consumed(tuple((
                 map_parser(
                     identifier,
-                    cut(alt(Choice(OPCODES.iter().map(|x: &&'static str| tag(*x))))),
+                    cut(context(
+                        Context::Opcode,
+                        alt(Choice(OPCODES.iter().map(|x: &&'static str| tag(*x)))),
+                    )),
                 ),
                 alt((space1, success(Span::new("")))),
-                separated_list0(
-                    |i2| dbg!(tuple((char(','), space0))(dbg!(i2))),
-                    |i| dbg!(arg(dbg!(i))),
-                ),
+                separated_list0(|i2| tuple((char(','), space0))(i2), arg),
             ))),
             |(c, (s, _, v))| c.map(|_| (s, v.clone())),
         ),
@@ -142,21 +99,18 @@ pub fn instr(i: Span) -> PResult<Instr> {
 }
 
 fn eol(i: Span) -> PResult {
-    context(
-        "eol",
-        map(
-            consumed(alt((
-                value((), context("newline", pair(opt(char('\r')), char('\n')))),
-                value((), eof),
-            ))),
-            |(x, _): (Span, _)| x,
-        ),
+    map(
+        consumed(alt((
+            value((), context(Context::Eol, pair(opt(char('\r')), char('\n')))),
+            value((), eof),
+        ))),
+        |(x, _): (Span, _)| x,
     )(i)
 }
 
 pub fn comment(i: Span) -> PResult {
     context(
-        "comment",
+        Context::Comment,
         map(
             consumed(tuple((char(';'), not_line_ending))),
             |(x, _): (Span, _)| x,
@@ -166,7 +120,7 @@ pub fn comment(i: Span) -> PResult {
 
 pub fn line(i: Span) -> IResult<Span, Option<Span<Instr>>, Error<Span>> {
     context(
-        "line",
+        Context::Line,
         alt((
             map(tuple((space0, comment)), |_| None),
             map(
