@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, hash::Hash};
+use std::{collections::HashMap, fmt::Display, hash::Hash, path::{PathBuf, Path}};
 
 use ariadne::Source;
 
@@ -76,5 +76,50 @@ pub struct OnlyOne;
 impl Display for OnlyOne {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "<unknown>")
+    }
+}
+
+#[derive(Default)]
+pub struct FsCache {
+    cache: Cache<PathBuf>,
+    valid: Vec<PathBuf>
+}
+
+impl FsCache {
+    pub fn new() -> Self {Self::default()}
+
+    pub fn add<P: AsRef<Path>>(&mut self, p: &P) {
+        self.valid.push(p.as_ref().to_path_buf())
+    }
+
+    fn get<P: AsRef<Path>>(&mut self, p: &P) -> Result<&(String, Source), std::io::Error> {
+        if self.valid.iter().any(|x| x == p.as_ref()) {
+            Ok(self.cache.entry(p.as_ref().to_path_buf()).or_insert(
+                std::fs::read_to_string(p)
+                    .map(Into::into)
+                    .map(|x: String| (x.clone(), Source::from(x)))?,
+            ))
+        }else{
+            Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("{} is not a valid path", p.as_ref().display())))
+        }
+        
+    }
+}
+
+impl<P: AsRef<Path>> CacheStr<P> for FsCache {
+    type Error = std::io::Error;
+
+    fn get_str<'a>(&'a mut self, id: &P) -> Result<&'a str, Self::Error> {
+        Ok(self.get(id)?.0.as_str())
+    }
+}
+
+impl<P: AsRef<Path>> ariadne::Cache<P> for FsCache {
+    fn fetch(&mut self, id: &P) -> Result<&Source, Box<dyn std::fmt::Debug + '_>> {
+        Ok(&self.get(id).map_err(|x|-> Box<dyn std::fmt::Debug> {Box::new(x)})?.1)
+    }
+
+    fn display<'a>(&self, id: &'a P) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(id.as_ref().display()))
     }
 }

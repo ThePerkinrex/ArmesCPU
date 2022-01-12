@@ -2,12 +2,12 @@ use std::{
     fmt::{Debug, Display},
     hash::Hash,
     iter::once,
-    ops::Range,
+    ops::Range, path::Path, fs::File,
 };
 
 use ariadne::{Cache, Color, Label, Report};
-use asm_ir::Ast;
-use cache::CacheStr;
+use asm_ir::{Ast, Program};
+use cache::{CacheStr, FsCache};
 use error::error_as_reports;
 use parser::{lines, Addr, Arg, ConstantAddr, Span};
 
@@ -15,6 +15,43 @@ pub mod cache;
 pub mod error;
 mod from_str_radix;
 pub mod parser;
+#[cfg(feature = "cli")]
+pub mod config;
+
+#[cfg(feature = "cli")]
+pub fn parse<P: AsRef<Path>>(input: &[P], output: P) {
+    // TODO remove unwraps
+    let mut cache = FsCache::new();
+    for p in input {
+        cache.add(p)
+    }
+    let program = if input.len() == 1 {
+        let i = &input[0];
+        let v = match parse_file(&i.as_ref().to_path_buf(), &mut cache) {
+            Err(ParseErr::Reports(r)) => {
+                for report in r {
+                    report.eprint(&mut cache).unwrap();
+                }
+                return; // Do not continue
+            }
+            Err(ParseErr::FileError(e)) => {
+                eprintln!("File error: {}", e);
+                return; // Do not continue
+            }
+            Ok(v) => v
+        };
+
+        let mut p = Program::new();
+        p.segments.push((0, v));
+        p
+    }else{
+        todo!()
+    };
+
+    let mut f = File::create(output).unwrap();
+    program.write(&mut f).unwrap();
+}
+
 
 pub enum ParseErr<Id: std::fmt::Debug + Hash + Eq + Clone, E> {
     Reports(Vec<Report<(Id, Range<usize>)>>),
