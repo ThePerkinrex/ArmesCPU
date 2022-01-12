@@ -84,6 +84,27 @@ fn addr(i: Span) -> PResult<Addr> {
     )(i)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstantAddr {
+    Pointer,
+    Addr(u16),
+}
+
+fn constant_addr(i: Span) -> PResult<ConstantAddr> {
+    context(
+        Context::ConstantAddr,
+        alt((
+            preceded(
+                char('#'),
+                cut(alt(
+                    (map(number, |s: Span<u16>| s.map(ConstantAddr::Addr)),),
+                )),
+            ),
+            map(tag("I"), |x: Span| x.map(|_| ConstantAddr::Pointer)),
+        )),
+    )(i)
+}
+
 fn register(i: Span) -> PResult<u8> {
     context(
         Context::Register,
@@ -102,6 +123,7 @@ pub enum Arg {
     Addr(Addr),
     Byte(u8),
     Register(u8),
+    ConstantAddr(ConstantAddr),
 }
 
 pub fn arg(i: Span) -> PResult<Arg> {
@@ -111,15 +133,19 @@ pub fn arg(i: Span) -> PResult<Arg> {
             map(constant_byte, |x| x.map(Arg::Byte)),
             map(addr, |x| x.map(Arg::Addr)),
             map(register, |x| x.map(Arg::Register)),
+            map(register, |x| x.map(Arg::Register)),
+            map(constant_addr, |x| x.map(Arg::ConstantAddr)),
         )),
     )(i)
 }
+
+// TODO add constant addr tests
 
 #[cfg(test)]
 mod tests {
     use crate::parser::tests::{assert_nom_err, assert_nom_failure, assert_nom_ok_extra};
 
-    use super::{addr, arg, constant_byte, number, register, Addr, Arg, Span};
+    use super::{addr, arg, constant_byte, number, register, Addr, Arg, Span, constant_addr, ConstantAddr};
 
     #[test]
     fn parse_num() {
@@ -155,6 +181,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_constant_addr() {
+        assert_nom_err(constant_addr, Span::new("$10"));
+        assert_nom_ok_extra(constant_addr, Span::new("#10"), "", ConstantAddr::Addr(10));
+        assert_nom_ok_extra(constant_addr, Span::new("I"), "", ConstantAddr::Pointer);
+        assert_nom_failure(constant_addr, Span::new("#hi"));
+    }
+
+    #[test]
     fn parse_register() {
         assert_nom_err(register, Span::new("$10"));
         assert_nom_err(register, Span::new("[10]"));
@@ -172,6 +206,8 @@ mod tests {
         assert_nom_ok_extra(arg, Span::new("VA"), "", Arg::Register(10));
         assert_nom_ok_extra(arg, Span::new("[10]"), "", Arg::Addr(Addr::Addr(10)));
         assert_nom_ok_extra(arg, Span::new("[I]AA"), "AA", Arg::Addr(Addr::Pointer));
+        assert_nom_ok_extra(arg, Span::new("#10"), "", Arg::ConstantAddr(ConstantAddr::Addr(10)));
+        assert_nom_ok_extra(arg, Span::new("IAA"), "AA", Arg::ConstantAddr(ConstantAddr::Pointer));
         assert_nom_err(arg, Span::new("AAAAAAAAAAAAAAAA"));
         // panic!()
     }

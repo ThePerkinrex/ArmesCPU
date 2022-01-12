@@ -30,7 +30,7 @@ pub enum Ast {
     // LoadIntoDT(u8),
     // LoadIntoST(u8),
     // LoadFont(u8),
-    LoadDigits(u8),
+    // LoadDigits(u8),
     LoadIntoRegs(u8),
     LoadFromRegs(u8),
     AddByte(u8, u8),
@@ -103,7 +103,7 @@ impl Ast {
             (0x8, _, 1, 6) => Ok(ShiftLeft(x)), // SHL Vx
             (0x8, _, _, 7) => Ok(SubNeg(x, y)), // SUBN Vx, Vy
             (0xF, _, 0x1, 0xE) => Ok(AddToPointer(x)), // ADD I, Vx
-            (0xF, _, 0x3, 0x3) => Ok(LoadDigits(x)), // LD B, Vx
+            // (0xF, _, 0x3, 0x3) => Ok(LoadDigits(x)), // LD B, Vx
             (0xF, _, 0x5, 0x5) => Ok(LoadFromRegs(x)), // LD [I], Vx
             (0xF, _, 0x6, 0x5) => Ok(LoadIntoRegs(x)), // LD Vx, [I]
             _ => Err(ParseError::UnknownInstruction(opcode)),
@@ -137,7 +137,7 @@ impl From<Ast> for BytecodeInstr {
             Ast::SkipNotEqReg(x, y) => Single(0x5001 | ((x as u16) << 8) | ((y as u16) << 4)),
             Ast::LoadByte(x, kk) => Single(0x6000 | ((x as u16) << 8) | kk as u16),
             Ast::LoadReg(x, y) => Single(0x8000 | ((x as u16) << 8) | ((y as u16) << 4)),
-            Ast::LoadDigits(x) => Single(0xF033 | ((x as u16) << 8)),
+            // Ast::LoadDigits(x) => Single(0xF033 | ((x as u16) << 8)),
             Ast::LoadIntoRegs(x) => Single(0xF065 | ((x as u16) << 8)),
             Ast::LoadFromRegs(x) => Single(0xF055 | ((x as u16) << 8)),
             Ast::AddByte(x, kk) => Single(0x7000 | ((x as u16) << 8) | kk as u16),
@@ -187,7 +187,7 @@ impl Iterator for BytecodeIter {
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct Program {
-    segments: Vec<(u16, Vec<Ast>)>,
+    pub segments: Vec<(u16, Vec<Ast>)>,
 }
 // Binary layout:
 // u8 numsegments
@@ -195,6 +195,9 @@ pub struct Program {
 // prog: u8*
 
 impl Program {
+    pub fn new() -> Self {
+        Self::default()
+    }
     pub fn write<W: Write>(self, buf: &mut W) -> std::io::Result<()> {
         let segments = self
             .segments

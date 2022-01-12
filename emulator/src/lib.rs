@@ -116,12 +116,12 @@ impl Cpu {
                 Ast::LoadPointerOffset(x, addr) => {
                     self.pointer = addr + self.registers[x as usize] as u16
                 }
-                Ast::LoadDigits(x) => {
-                    let v = self.registers[x as usize];
-                    self.memory.set(self.pointer, v / 100);
-                    self.memory.set(self.pointer + 1, (v % 100) / 10);
-                    self.memory.set(self.pointer + 2, v % 10);
-                }
+                // Ast::LoadDigits(x) => {
+                //     let v = self.registers[x as usize];
+                //     self.memory.set(self.pointer, v / 100);
+                //     self.memory.set(self.pointer + 1, (v % 100) / 10);
+                //     self.memory.set(self.pointer + 2, v % 10);
+                // }
                 Ast::LoadIntoRegs(x) => {
                     for i in 0..=x {
                         self.registers[i as usize] =

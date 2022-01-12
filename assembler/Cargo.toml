@@ -10,5 +10,5 @@ license = "MIT"
 [dependencies]
 nom = "7"
 nom_locate = "4"
-# nom-supreme = "0.6"
 ariadne = "0.1"
+asm-ir = {path="../asm-ir"}

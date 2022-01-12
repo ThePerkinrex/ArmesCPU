@@ -1,7 +1,8 @@
 use nom::{
     branch::alt,
-    character::complete::{alpha1, alphanumeric1, char, not_line_ending, space0, space1},
-    combinator::{consumed, cut, eof, map, map_parser, opt, recognize, success, value},
+    bytes::complete::take,
+    character::complete::{alpha1, alphanumeric1, char, space0, space1},
+    combinator::{consumed, cut, eof, map, map_parser, not, opt, peek, recognize, success, value},
     error::ParseError,
     multi::{many0, separated_list0},
     sequence::{pair, terminated, tuple},
@@ -12,9 +13,11 @@ use nom_locate::LocatedSpan;
 
 use crate::error::{context, BaseErrorKind, Context, Error, Expectation};
 
-use self::arg::{arg, Arg};
+use self::arg::arg;
 
 mod arg;
+
+pub use arg::{Addr, Arg, ConstantAddr};
 
 pub fn take_all<Input, Error: ParseError<Input>>(i: Input) -> IResult<Input, Input, Error>
 where
@@ -108,11 +111,18 @@ fn eol(i: Span) -> PResult {
     )(i)
 }
 
-pub fn comment(i: Span) -> PResult {
+pub fn comment<'a>(i: Span<'a>) -> PResult {
     context(
         Context::Comment,
         map(
-            consumed(tuple((char(';'), not_line_ending))),
+            consumed(tuple((char(';'), |mut x: Span<'a>| {
+                while peek(not(eol))(x).is_ok() {
+                    let (rest, _) = take(1usize)(x)?;
+                    // println!("REST {:?}", rest.fragment());
+                    x = rest;
+                }
+                Ok((x, ()))
+            }))),
             |(x, _): (Span, _)| x,
         ),
     )(i)

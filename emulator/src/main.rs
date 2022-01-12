@@ -3,6 +3,10 @@ use emulator::Cpu;
 
 fn main() {
     let mut cpu = Cpu::default();
+    // let p = Program::parse(&std::fs::read("hi.o").unwrap());
+    // for (off, p) in p.segments {
+    //     cpu.load_program(&p, off);
+    // }
     cpu.load_program(&[Ast::JumpOffset(0, 0x2000), Ast::Nop], 0);
     cpu.load_program(
         &[
