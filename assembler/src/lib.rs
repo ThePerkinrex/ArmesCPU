@@ -1,8 +1,10 @@
 use std::{
     fmt::{Debug, Display},
+    fs::File,
     hash::Hash,
     iter::once,
-    ops::Range, path::Path, fs::File,
+    ops::Range,
+    path::Path,
 };
 
 use ariadne::{Cache, Color, Label, Report};
@@ -12,11 +14,11 @@ use error::error_as_reports;
 use parser::{lines, Addr, Arg, ConstantAddr, Span};
 
 pub mod cache;
+#[cfg(feature = "cli")]
+pub mod config;
 pub mod error;
 mod from_str_radix;
 pub mod parser;
-#[cfg(feature = "cli")]
-pub mod config;
 
 #[cfg(feature = "cli")]
 pub fn parse<P: AsRef<Path>>(input: &[P], output: P) {
@@ -38,20 +40,19 @@ pub fn parse<P: AsRef<Path>>(input: &[P], output: P) {
                 eprintln!("File error: {}", e);
                 return; // Do not continue
             }
-            Ok(v) => v
+            Ok(v) => v,
         };
 
         let mut p = Program::new();
         p.segments.push((0, v));
         p
-    }else{
+    } else {
         todo!()
     };
 
     let mut f = File::create(output).unwrap();
     program.write(&mut f).unwrap();
 }
-
 
 pub enum ParseErr<Id: std::fmt::Debug + Hash + Eq + Clone, E> {
     Reports(Vec<Report<(Id, Range<usize>)>>),

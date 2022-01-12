@@ -48,7 +48,8 @@ fn main() {
     //     ],
     //     0x2000,
     // ); // prints fib
-    loop { // TODO add halt io port
+    loop {
+        // TODO add halt io port
         // let t = std::time::Instant::now();
         cpu.cycle();
         // println!("> {:?}", t.elapsed());

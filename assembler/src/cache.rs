@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fmt::Display, hash::Hash, path::{PathBuf, Path}};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    hash::Hash,
+    path::{Path, PathBuf},
+};
 
 use ariadne::Source;
 
@@ -82,11 +87,13 @@ impl Display for OnlyOne {
 #[derive(Default)]
 pub struct FsCache {
     cache: Cache<PathBuf>,
-    valid: Vec<PathBuf>
+    valid: Vec<PathBuf>,
 }
 
 impl FsCache {
-    pub fn new() -> Self {Self::default()}
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn add<P: AsRef<Path>>(&mut self, p: &P) {
         self.valid.push(p.as_ref().to_path_buf())
@@ -99,10 +106,12 @@ impl FsCache {
                     .map(Into::into)
                     .map(|x: String| (x.clone(), Source::from(x)))?,
             ))
-        }else{
-            Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("{} is not a valid path", p.as_ref().display())))
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("{} is not a valid path", p.as_ref().display()),
+            ))
         }
-        
     }
 }
 
@@ -116,7 +125,10 @@ impl<P: AsRef<Path>> CacheStr<P> for FsCache {
 
 impl<P: AsRef<Path>> ariadne::Cache<P> for FsCache {
     fn fetch(&mut self, id: &P) -> Result<&Source, Box<dyn std::fmt::Debug + '_>> {
-        Ok(&self.get(id).map_err(|x|-> Box<dyn std::fmt::Debug> {Box::new(x)})?.1)
+        Ok(&self
+            .get(id)
+            .map_err(|x| -> Box<dyn std::fmt::Debug> { Box::new(x) })?
+            .1)
     }
 
     fn display<'a>(&self, id: &'a P) -> Option<Box<dyn std::fmt::Display + 'a>> {
