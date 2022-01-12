@@ -139,8 +139,6 @@ pub fn arg(i: Span) -> PResult<Arg> {
     )(i)
 }
 
-// TODO add constant addr tests
-
 #[cfg(test)]
 mod tests {
     use crate::parser::tests::{assert_nom_err, assert_nom_failure, assert_nom_ok_extra};
