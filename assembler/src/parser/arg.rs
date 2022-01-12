@@ -145,7 +145,9 @@ pub fn arg(i: Span) -> PResult<Arg> {
 mod tests {
     use crate::parser::tests::{assert_nom_err, assert_nom_failure, assert_nom_ok_extra};
 
-    use super::{addr, arg, constant_byte, number, register, Addr, Arg, Span, constant_addr, ConstantAddr};
+    use super::{
+        addr, arg, constant_addr, constant_byte, number, register, Addr, Arg, ConstantAddr, Span,
+    };
 
     #[test]
     fn parse_num() {
@@ -206,8 +208,18 @@ mod tests {
         assert_nom_ok_extra(arg, Span::new("VA"), "", Arg::Register(10));
         assert_nom_ok_extra(arg, Span::new("[10]"), "", Arg::Addr(Addr::Addr(10)));
         assert_nom_ok_extra(arg, Span::new("[I]AA"), "AA", Arg::Addr(Addr::Pointer));
-        assert_nom_ok_extra(arg, Span::new("#10"), "", Arg::ConstantAddr(ConstantAddr::Addr(10)));
-        assert_nom_ok_extra(arg, Span::new("IAA"), "AA", Arg::ConstantAddr(ConstantAddr::Pointer));
+        assert_nom_ok_extra(
+            arg,
+            Span::new("#10"),
+            "",
+            Arg::ConstantAddr(ConstantAddr::Addr(10)),
+        );
+        assert_nom_ok_extra(
+            arg,
+            Span::new("IAA"),
+            "AA",
+            Arg::ConstantAddr(ConstantAddr::Pointer),
+        );
         assert_nom_err(arg, Span::new("AAAAAAAAAAAAAAAA"));
         // panic!()
     }
