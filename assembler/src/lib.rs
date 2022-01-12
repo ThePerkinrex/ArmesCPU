@@ -180,81 +180,71 @@ where
                     id.clone(),
                     &opcode,
                     &args,
-                    &[
-                        &[ArgKind::Register, ArgKind::Register],
-                    ],
+                    &[&[ArgKind::Register, ArgKind::Register]],
                 ) {
-                    Ok(x) => res.push(match (x,args[0].extra, args[1].extra) {
+                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
                         (0, Arg::Register(x), Arg::Register(y)) => Ast::Sub(x, y),
                         _ => unreachable!(),
                     }),
                     Err(e) => reports.extend(e),
                 };
-            },
+            }
             "SUBN" => {
                 match expected_args_whole(
                     id.clone(),
                     &opcode,
                     &args,
-                    &[
-                        &[ArgKind::Register, ArgKind::Register],
-                    ],
+                    &[&[ArgKind::Register, ArgKind::Register]],
                 ) {
-                    Ok(x) => res.push(match (x,args[0].extra, args[1].extra) {
+                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
                         (0, Arg::Register(x), Arg::Register(y)) => Ast::SubNeg(x, y),
                         _ => unreachable!(),
                     }),
                     Err(e) => reports.extend(e),
                 };
-            },
-            "OR" =>  {
+            }
+            "OR" => {
                 match expected_args_whole(
                     id.clone(),
                     &opcode,
                     &args,
-                    &[
-                        &[ArgKind::Register, ArgKind::Register],
-                    ],
+                    &[&[ArgKind::Register, ArgKind::Register]],
                 ) {
-                    Ok(x) => res.push(match (x,args[0].extra, args[1].extra) {
+                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
                         (0, Arg::Register(x), Arg::Register(y)) => Ast::Or(x, y),
                         _ => unreachable!(),
                     }),
                     Err(e) => reports.extend(e),
                 };
-            },
-            "XOR" =>  {
+            }
+            "XOR" => {
                 match expected_args_whole(
                     id.clone(),
                     &opcode,
                     &args,
-                    &[
-                        &[ArgKind::Register, ArgKind::Register],
-                    ],
+                    &[&[ArgKind::Register, ArgKind::Register]],
                 ) {
-                    Ok(x) => res.push(match (x,args[0].extra, args[1].extra) {
+                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
                         (0, Arg::Register(x), Arg::Register(y)) => Ast::Xor(x, y),
                         _ => unreachable!(),
                     }),
                     Err(e) => reports.extend(e),
                 };
-            },
-            "AND" =>  {
+            }
+            "AND" => {
                 match expected_args_whole(
                     id.clone(),
                     &opcode,
                     &args,
-                    &[
-                        &[ArgKind::Register, ArgKind::Register],
-                    ],
+                    &[&[ArgKind::Register, ArgKind::Register]],
                 ) {
-                    Ok(x) => res.push(match (x,args[0].extra, args[1].extra) {
+                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
                         (0, Arg::Register(x), Arg::Register(y)) => Ast::And(x, y),
                         _ => unreachable!(),
                     }),
                     Err(e) => reports.extend(e),
                 };
-            },
+            }
             "SE" => {
                 match expected_args_whole(
                     id.clone(),
@@ -272,7 +262,7 @@ where
                     }),
                     Err(e) => reports.extend(e),
                 };
-            },
+            }
             "SNE" => {
                 match expected_args_whole(
                     id.clone(),
@@ -290,39 +280,25 @@ where
                     }),
                     Err(e) => reports.extend(e),
                 };
-            },
+            }
             "SHR" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[
-                        &[ArgKind::Register],
-                    ],
-                ) {
-                    Ok(x) => res.push(match (x,args[0].extra) {
+                match expected_args_whole(id.clone(), &opcode, &args, &[&[ArgKind::Register]]) {
+                    Ok(x) => res.push(match (x, args[0].extra) {
                         (0, Arg::Register(x)) => Ast::ShiftRight(x),
                         _ => unreachable!(),
                     }),
                     Err(e) => reports.extend(e),
                 };
-            },
+            }
             "SHL" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[
-                        &[ArgKind::Register],
-                    ],
-                ) {
-                    Ok(x) => res.push(match (x,args[0].extra) {
+                match expected_args_whole(id.clone(), &opcode, &args, &[&[ArgKind::Register]]) {
+                    Ok(x) => res.push(match (x, args[0].extra) {
                         (0, Arg::Register(x)) => Ast::ShiftLeft(x),
                         _ => unreachable!(),
                     }),
                     Err(e) => reports.extend(e),
                 };
-            },
+            }
             x => unreachable!("Unexpected opcode: {}", x),
         }
     }
@@ -465,7 +441,7 @@ fn expected_args_whole<Id: std::fmt::Debug + Hash + Eq + Clone>(
         let r = expected_args_single(id, args, kind[0]);
         if r.is_empty() {
             Ok(0)
-        }else{
+        } else {
             Err(r)
         }
     } else {
