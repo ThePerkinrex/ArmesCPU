@@ -32,8 +32,8 @@ pub const SHT_STRTAB: u8 = 3;
 pub const SHT_NOBITS: u8 = 4;
 
 /// link contains the sh index of the symbol table  
-/// info contains the sh index of the section this reloacation applies to
-pub const SHT_RELA: u8 = 5;
+/// info contains the sh index of the section this relocation applies to
+// pub const SHT_RELA: u8 = 5;
 pub const SHT_REL: u8 = 6;
 
 pub struct SectionHeader {
@@ -48,7 +48,7 @@ pub struct SectionHeader {
 pub const STN_UNDEF: usize = 0;
 // Symbol bindings
 
-/// All bindings with [`STB_LOCAL`] preceded other bindings in symbol tables
+/// All bindings with [`STB_LOCAL`] precede other bindings in symbol tables
 pub const STB_LOCAL: u8 = 0;
 /// No two global symbol can have the same name  
 /// If a weak and global symbol have the same name, the weak one is ignored
@@ -79,3 +79,54 @@ pub struct SymbolEntry {
     pub info: u8,
     pub shndx: u16,
 }
+
+
+pub struct RelEntry {
+	/// Location at which to apply the relocation action.  
+	/// For a relocatable file, the value is the byte offset from the begining of the section
+	/// to the storage unit affected by the relocation.  
+	/// For an executable file or SO, the value is the virtual address of the unit affected by the relocation
+	pub offset: u16,
+	/// Symbol table index.  
+	/// For example, a call instruction’s relocation entry
+	/// would hold the symbol table index of the function being called.  
+	/// If the index is [`STN_UNDEF`],
+	/// the undefined symbol index, the relocation uses `0` as the "symbol value".
+	pub sym: u8,
+	/// How are we relocating  
+	/// see [relocation strategies `R`](rel_strategies)
+	pub kind: u8
+}
+
+// pub struct RelaEntry {
+// 	pub rel: RelEntry,
+// 	pub addend: u16
+// }
+
+pub use rel_strategies as R;
+
+pub mod rel_strategies {
+	//! # Relocation strategies
+	//! 
+	//! ### Common names used in calculation descriptions
+	// //!  * `A`: [`addend`](super::RelaEntry)
+	//!  * `B`: Base address at which the object was loaded
+	//!  * `G`: offset into the GOT at which the the addr of the symbol will reside
+	//!  * `GOT`: address of the GOT
+	//!  * `P`: Location of the storage unit to be relocated (derives from [`offset`](super::RelEntry))
+	//!  * `S`: Value of the symbol
+
+
+	/// Do nothing
+	pub const NONE: u8 = 0;
+
+	// /// [RELA ONLY] `S + A`
+	// pub const ADD: u8 = 1;
+	// /// [RELA ONLY] `S + A - P`
+	// pub const ADDP: u8 = 2;
+
+	/// `S`  
+	/// Set a GOT entry to the symbol address
+	pub const GLOB_DAT: u8 = 6;
+}
+
