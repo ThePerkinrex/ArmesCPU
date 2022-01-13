@@ -9,7 +9,7 @@ pub mod write;
 pub enum Pointee {
     Address(u16),
     Symbol(String),
-    None
+    None,
 }
 
 impl Default for Pointee {
