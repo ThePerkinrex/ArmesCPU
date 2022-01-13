@@ -1,12 +1,27 @@
 use std::collections::HashMap;
 
-// pub mod literal; // Literal (as you read) elf types
+#[cfg(feature = "read")]
+pub mod read;
 
-// pub struct ElfHeader {}
+#[cfg(feature = "write")]
+pub mod write;
+#[derive(Debug, Clone)]
+pub enum Pointee {
+    Address(u16),
+    Symbol(String),
+    None
+}
+
+impl Default for Pointee {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Relocatable {
-    symbols: HashMap<String, Option<u16>>,
-    relocations: Vec<(u16, String)>,
+    symbols: HashMap<String, Pointee>,
+    relocations: Vec<(u16, u16, String)>,
     data: Vec<(u16, Vec<u8>)>,
 }
 
@@ -21,16 +36,16 @@ impl Relocatable {
 
     /// Defines symbol not pointed to anything
     pub fn declare(&mut self, symbol: String) {
-        self.symbols.insert(symbol, None);
+        self.symbols.insert(symbol, Pointee::None);
     }
 
-    /// Declares if not present, points symbol to vaddr
-    pub fn define(&mut self, symbol: String, addr: u16) {
-        *self.symbols.entry(symbol).or_default() = Some(addr);
+    /// Declares if not present, points sym[bol to vaddr
+    pub fn define(&mut self, symbol: String, addr: Pointee) {
+        *self.symbols.entry(symbol).or_default() = addr;
     }
 
-    pub fn relocate(&mut self, addr: u16, sym: String) {
-        self.relocations.push((addr, sym))
+    pub fn relocate(&mut self, sect: u16, addr: u16, sym: String) {
+        self.relocations.push((sect, addr, sym))
     }
 
     pub fn clear_rel(&mut self) {

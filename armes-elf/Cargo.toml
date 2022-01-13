@@ -5,7 +5,10 @@ edition = "2021"
 license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+read = ["nom"]
+write = []
+default = ["read", "write"]
 
 [dependencies]
-# nom = "7"
-# num_enum = "0.5"
+nom = {version = "7", optional = true}
