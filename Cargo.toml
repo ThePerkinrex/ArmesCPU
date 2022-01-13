@@ -1,7 +1,7 @@
 
 [workspace]
 resolver = "2"
-members = ["emulator", "asm-ir", "assembler"]
+members = ["emulator", "asm-ir", "assembler", "armes-elf"]
 
 [patch.crates-io]
 nom_locate = {git="https://github.com/ThePerkinrex/nom_locate"}
