@@ -11,4 +11,4 @@ LD [I], V0 ; Print
 SNE VF, $0
 JP #0x000A
 LD VF, $0
-JP #0
+JP #26 ; loop
