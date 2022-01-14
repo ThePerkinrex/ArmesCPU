@@ -1,10 +1,16 @@
 use std::collections::HashMap;
-
 #[cfg(feature = "read")]
 pub mod read;
 
 #[cfg(feature = "write")]
 pub mod write;
+
+#[cfg(feature = "asm")]
+mod asm;
+
+#[cfg(feature = "asm")]
+pub use asm::{AsmElf, AsmPointee};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pointee {
     Address(u16),

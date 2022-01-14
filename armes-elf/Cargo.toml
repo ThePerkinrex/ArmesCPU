@@ -8,7 +8,9 @@ license = "MIT"
 [features]
 read = ["nom"]
 write = []
-default = ["read", "write"]
+default = ["read", "write", "asm"]
+asm = ["asm-ir"]
 
 [dependencies]
 nom = {version = "7", optional = true}
+asm-ir = {path="../asm-ir", optional=true}

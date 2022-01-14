@@ -154,6 +154,32 @@ impl From<Ast> for BytecodeInstr {
     }
 }
 
+impl Len for BytecodeInstr {
+    fn len(&self) -> usize {
+        match self {
+            Self::Single(_) => 1,
+            Self::Double(_, _) => 2,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        false
+    }
+}
+
+impl Len for Ast {
+    fn len(&self) -> usize {
+        match (*self).into() {
+            BytecodeInstr::Single(_) => 1,
+            BytecodeInstr::Double(_, _) => 2,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        false
+    }
+}
+
 impl IntoIterator for BytecodeInstr {
     type Item = u8;
 
@@ -182,6 +208,90 @@ impl Iterator for BytecodeIter {
         };
         self.idx += 1;
         r
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AstExtended<I = Vec<u8>> {
+    Ast(Ast),
+    Data(I),
+}
+
+impl<I: IntoIterator<Item = u8>> IntoIterator for AstExtended<I> {
+    type Item = <AstExtendedIter<I::IntoIter> as Iterator>::Item;
+
+    type IntoIter = AstExtendedIter<I::IntoIter>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            AstExtended::Ast(a) => AstExtendedIter::Ast(BytecodeInstr::from(a).into_iter()),
+            AstExtended::Data(b) => AstExtendedIter::Data(b.into_iter()),
+        }
+    }
+}
+
+impl<I> From<Ast> for AstExtended<I> {
+    fn from(a: Ast) -> Self {
+        Self::Ast(a)
+    }
+}
+
+pub trait Len {
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl<T> Len for Vec<T> {
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
+impl<T> Len for [T] {
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
+impl<I: Len> Len for AstExtended<I> {
+    fn len(&self) -> usize {
+        match self {
+            AstExtended::Ast(a) => a.len(),
+            AstExtended::Data(b) => b.len(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        match self {
+            AstExtended::Ast(a) => a.is_empty(),
+            AstExtended::Data(b) => b.is_empty(),
+        }
+    }
+}
+
+pub enum AstExtendedIter<I> {
+    Ast(BytecodeIter),
+    Data(I),
+}
+
+impl<I: Iterator<Item = u8>> Iterator for AstExtendedIter<I> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            AstExtendedIter::Ast(b) => b.next(),
+            AstExtendedIter::Data(i) => i.next(),
+        }
     }
 }
 
