@@ -28,7 +28,13 @@ where
 
 pub type Span<'a, T = ()> = LocatedSpan<&'a str, T>;
 pub type PResult<'a, O = ()> = IResult<Span<'a>, Span<'a, O>, Error<Span<'a>>>;
-pub type Instr<'a> = (Span<'a>, Vec<Span<'a, Arg>>);
+pub type Instr<'a> = (Span<'a>, Vec<Span<'a, Arg<'a>>>);
+
+#[derive(Debug, Clone)]
+pub enum Line<'a> {
+    Instr(Instr<'a>),
+    Label(Span<'a>),
+}
 
 struct Choice<I: Iterator>(I);
 impl<I: Clone, O, E: ParseError<I>, T: Parser<I, O, E>, Iter: Iterator<Item = T>>
@@ -129,20 +135,20 @@ pub fn comment<'a>(i: Span<'a>) -> PResult {
     )(i)
 }
 
-pub fn line(i: Span) -> IResult<Span, Option<Span<Instr>>, Error<Span>> {
+pub fn line(i: Span) -> IResult<Span, Option<Span<Line>>, Error<Span>> {
     context(
         Context::Line,
         alt((
             map(tuple((space0, comment)), |_| None),
             map(
                 tuple((space0, opt(instr), opt(pair(space0, comment)))),
-                |(_, x, _)| x,
+                |(_, x, _)| x.map(|x| x.map(Line::Instr)),
             ),
         )),
     )(i)
 }
 
-pub fn lines(i: Span) -> IResult<Span, Vec<Span<Instr>>, Error<Span>> {
+pub fn lines(i: Span) -> IResult<Span, Vec<Span<Line>>, Error<Span>> {
     let mut v = Vec::new();
     let (mut rest, (_, mut l)) = consumed(terminated(line, eol))(i)?;
     loop {
@@ -176,9 +182,12 @@ mod tests {
 
     use crate::error::Error;
 
-    use super::{arg::Arg, comment, instr, line, PResult, Span};
+    use super::{arg::Arg, comment, instr, line, ConstantAddr, Line, PResult, Span};
 
-    pub fn assert_nom_err<O: PartialEq + Debug, F: Fn(Span) -> PResult<O>>(f: F, i: Span) {
+    pub fn assert_nom_err<'a, O: PartialEq + Debug, F: Fn(Span<'a>) -> PResult<'a, O>>(
+        f: F,
+        i: Span<'a>,
+    ) {
         let r = f(i);
         match &r {
             Err(nom::Err::Failure(e)) => println!("Fail {}", e),
@@ -188,7 +197,10 @@ mod tests {
         assert!(matches!(r, Err(nom::Err::Error(_))));
     }
 
-    pub fn assert_nom_failure<O: PartialEq + Debug, F: Fn(Span) -> PResult<O>>(f: F, i: Span) {
+    pub fn assert_nom_failure<'a, O: PartialEq + Debug, F: Fn(Span<'a>) -> PResult<'a, O>>(
+        f: F,
+        i: Span<'a>,
+    ) {
         let r = f(i);
         match &r {
             Err(nom::Err::Failure(e)) => println!("Fail {}", e),
@@ -198,9 +210,9 @@ mod tests {
         assert!(matches!(r, Err(nom::Err::Failure(_))));
     }
 
-    pub fn assert_nom_ok<O: PartialEq + Debug, F: Fn(Span) -> PResult<O>>(
+    pub fn assert_nom_ok<'a, O: PartialEq + Debug, F: Fn(Span<'a>) -> PResult<'a, O>>(
         f: F,
-        i: Span,
+        i: Span<'a>,
         res: &str,
         frag: Option<&str>,
         v: Option<O>,
@@ -222,18 +234,18 @@ mod tests {
         }
     }
 
-    pub fn assert_nom_ok_extra<O: PartialEq + Debug, F: Fn(Span) -> PResult<O>>(
+    pub fn assert_nom_ok_extra<'a, O: PartialEq + Debug, F: Fn(Span<'a>) -> PResult<'a, O>>(
         f: F,
-        i: Span,
+        i: Span<'a>,
         res: &str,
         v: O,
     ) {
         assert_nom_ok(f, i, res, None, Some(v))
     }
 
-    pub fn assert_nom_ok_fragment<O: PartialEq + Debug, F: Fn(Span) -> PResult<O>>(
+    pub fn assert_nom_ok_fragment<'a, O: PartialEq + Debug, F: Fn(Span<'a>) -> PResult<'a, O>>(
         f: F,
-        i: Span,
+        i: Span<'a>,
         res: &str,
         v: &str,
     ) {
@@ -289,9 +301,13 @@ mod tests {
             },
         );
 
-        assert_nom_ok_generic(instr, Span::new("RET A"), "A", |x| {
+        assert_nom_ok_generic(instr, Span::new("RET A"), "", |x| {
             let (code, args) = x.extra;
-            code.fragment() == &"RET" && args.is_empty()
+            code.fragment() == &"RET"
+                && args
+                    .iter()
+                    .zip([Arg::ConstantAddr(ConstantAddr::Symbol("A"))].iter())
+                    .all(|(a, b)| &a.extra == b)
         });
 
         assert_nom_ok_generic(instr, Span::new("RET\n\rA"), "\n\rA", |x| {
@@ -330,15 +346,21 @@ mod tests {
         assert_nom_ok_generic(line, Span::new("RET ; Return"), "", |x| {
             x.is_some() && {
                 let x = x.unwrap();
-                let (a, b) = x.extra;
-                a.fragment() == &"RET" && b.is_empty()
+                if let Line::Instr((a, b)) = x.extra {
+                    a.fragment() == &"RET" && b.is_empty()
+                } else {
+                    false
+                }
             }
         });
         assert_nom_ok_generic(line, Span::new("RET ; Return\nRET"), "\nRET", |x| {
             x.is_some() && {
                 let x = x.unwrap();
-                let (a, b) = x.extra;
-                a.fragment() == &"RET" && b.is_empty()
+                if let Line::Instr((a, b)) = x.extra {
+                    a.fragment() == &"RET" && b.is_empty()
+                } else {
+                    false
+                }
             }
         });
     }

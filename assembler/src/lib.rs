@@ -13,6 +13,8 @@ use cache::{CacheStr, FsCache};
 use error::error_as_reports;
 use parser::{lines, Addr, Arg, ConstantAddr, Span};
 
+use crate::parser::Line;
+
 pub mod cache;
 #[cfg(feature = "cli")]
 pub mod config;
@@ -95,249 +97,285 @@ where
     let mut res = Vec::with_capacity(instrs.len());
     let mut reports = Vec::new();
     for i in instrs {
-        let (opcode, args) = i.extra;
-        // println!("Parsing {} {}", opcode, args.iter().map(|x| ArgKind::from(&x.extra).to_string()).collect::<Vec<_>>().join(", "));
-        match *opcode.fragment() {
-            "NOP" => {
-                match expected_args_whole(id.clone(), &opcode, &args, &[&[]]) {
-                    Ok(_) => res.push(Ast::Nop),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "LD" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[
-                        &[ArgKind::Register, ArgKind::Byte],
-                        &[ArgKind::Register, ArgKind::Register],
-                        &[ArgKind::AddrPointer, ArgKind::Register],
-                        &[ArgKind::Register, ArgKind::AddrPointer],
-                        &[ArgKind::Pointer, ArgKind::ConstantAddr],
-                        &[ArgKind::Pointer, ArgKind::Register, ArgKind::ConstantAddr],
-                    ],
-                ) {
-                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                        (0, Arg::Register(x), Arg::Byte(b)) => Ast::LoadByte(x, b),
-                        (1, Arg::Register(x), Arg::Register(y)) => Ast::LoadReg(x, y),
-                        (2, Arg::Addr(Addr::Pointer), Arg::Register(y)) => Ast::LoadFromRegs(y),
-                        (3, Arg::Register(y), Arg::Addr(Addr::Pointer)) => Ast::LoadIntoRegs(y),
-                        (
-                            4,
-                            Arg::ConstantAddr(ConstantAddr::Pointer),
-                            Arg::ConstantAddr(ConstantAddr::Addr(x)),
-                        ) => Ast::LoadPointer(x),
-                        (5, Arg::ConstantAddr(ConstantAddr::Pointer), Arg::Register(x)) => {
-                            match args[2].extra {
-                                Arg::ConstantAddr(ConstantAddr::Addr(y)) => {
-                                    Ast::LoadPointerOffset(x, y)
+        match i.extra {
+            Line::Instr((opcode, args)) => {
+                // println!("Parsing {} {}", opcode, args.iter().map(|x| ArgKind::from(&x.extra).to_string()).collect::<Vec<_>>().join(", "));
+                match *opcode.fragment() {
+                    "NOP" => {
+                        match expected_args_whole(id.clone(), &opcode, &args, &[&[]]) {
+                            Ok(_) => res.push(Ast::Nop),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "LD" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[
+                                &[ArgKind::Register, ArgKind::Byte],
+                                &[ArgKind::Register, ArgKind::Register],
+                                &[ArgKind::AddrPointer, ArgKind::Register],
+                                &[ArgKind::Register, ArgKind::AddrPointer],
+                                &[ArgKind::Pointer, ArgKind::ConstantAddr],
+                                &[ArgKind::Pointer, ArgKind::Register, ArgKind::ConstantAddr],
+                            ],
+                        ) {
+                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
+                                (0, Arg::Register(x), Arg::Byte(b)) => Ast::LoadByte(x, b),
+                                (1, Arg::Register(x), Arg::Register(y)) => Ast::LoadReg(x, y),
+                                (2, Arg::Addr(Addr::Pointer), Arg::Register(y)) => {
+                                    Ast::LoadFromRegs(y)
+                                }
+                                (3, Arg::Register(y), Arg::Addr(Addr::Pointer)) => {
+                                    Ast::LoadIntoRegs(y)
+                                }
+                                (
+                                    4,
+                                    Arg::ConstantAddr(ConstantAddr::Pointer),
+                                    Arg::ConstantAddr(ConstantAddr::Addr(x)),
+                                ) => Ast::LoadPointer(x),
+                                (5, Arg::ConstantAddr(ConstantAddr::Pointer), Arg::Register(x)) => {
+                                    match args[2].extra {
+                                        Arg::ConstantAddr(ConstantAddr::Addr(y)) => {
+                                            Ast::LoadPointerOffset(x, y)
+                                        }
+                                        _ => unreachable!(),
+                                    }
                                 }
                                 _ => unreachable!(),
+                            }),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "RET" => {
+                        match expected_args_whole(id.clone(), &opcode, &args, &[&[]]) {
+                            Ok(_) => res.push(Ast::Return),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "CALL" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[
+                                &[ArgKind::ConstantAddr],
+                                &[ArgKind::Register, ArgKind::ConstantAddr],
+                                &[ArgKind::Pointer],
+                            ],
+                        ) {
+                            Ok(x) => {
+                                res.push(match (x, args[0].extra, args.get(1).map(|x| x.extra)) {
+                                    (0, Arg::ConstantAddr(ConstantAddr::Addr(x)), None) => {
+                                        Ast::Call(x)
+                                    }
+                                    (
+                                        1,
+                                        Arg::Register(x),
+                                        Some(Arg::ConstantAddr(ConstantAddr::Addr(y))),
+                                    ) => Ast::CallOffset(x, y),
+                                    (2, Arg::ConstantAddr(ConstantAddr::Pointer), None) => {
+                                        Ast::CallPointer
+                                    }
+                                    _ => unreachable!(),
+                                })
                             }
-                        }
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "JP" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[
+                                &[ArgKind::ConstantAddr],
+                                &[ArgKind::Register, ArgKind::ConstantAddr],
+                                &[ArgKind::Pointer],
+                            ],
+                        ) {
+                            Ok(x) => {
+                                res.push(match (x, args[0].extra, args.get(1).map(|x| x.extra)) {
+                                    (0, Arg::ConstantAddr(ConstantAddr::Addr(x)), None) => {
+                                        Ast::Jump(x)
+                                    }
+                                    (
+                                        1,
+                                        Arg::Register(x),
+                                        Some(Arg::ConstantAddr(ConstantAddr::Addr(y))),
+                                    ) => Ast::JumpOffset(x, y),
+                                    (2, Arg::ConstantAddr(ConstantAddr::Pointer), None) => {
+                                        Ast::JumpPointer
+                                    }
+                                    _ => unreachable!(),
+                                })
+                            }
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "ADD" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[
+                                &[ArgKind::Register, ArgKind::Byte],
+                                &[ArgKind::Register, ArgKind::Register],
+                                &[ArgKind::Pointer, ArgKind::Register],
+                            ],
+                        ) {
+                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
+                                (0, Arg::Register(x), Arg::Byte(b)) => Ast::AddByte(x, b),
+                                (1, Arg::Register(x), Arg::Register(y)) => Ast::AddReg(x, y),
+                                (2, Arg::ConstantAddr(ConstantAddr::Pointer), Arg::Register(y)) => {
+                                    Ast::AddToPointer(y)
+                                }
+                                _ => unreachable!(),
+                            }),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "SUB" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[&[ArgKind::Register, ArgKind::Register]],
+                        ) {
+                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
+                                (0, Arg::Register(x), Arg::Register(y)) => Ast::Sub(x, y),
+                                _ => unreachable!(),
+                            }),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "SUBN" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[&[ArgKind::Register, ArgKind::Register]],
+                        ) {
+                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
+                                (0, Arg::Register(x), Arg::Register(y)) => Ast::SubNeg(x, y),
+                                _ => unreachable!(),
+                            }),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "OR" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[&[ArgKind::Register, ArgKind::Register]],
+                        ) {
+                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
+                                (0, Arg::Register(x), Arg::Register(y)) => Ast::Or(x, y),
+                                _ => unreachable!(),
+                            }),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "XOR" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[&[ArgKind::Register, ArgKind::Register]],
+                        ) {
+                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
+                                (0, Arg::Register(x), Arg::Register(y)) => Ast::Xor(x, y),
+                                _ => unreachable!(),
+                            }),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "AND" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[&[ArgKind::Register, ArgKind::Register]],
+                        ) {
+                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
+                                (0, Arg::Register(x), Arg::Register(y)) => Ast::And(x, y),
+                                _ => unreachable!(),
+                            }),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "SE" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[
+                                &[ArgKind::Register, ArgKind::Byte],
+                                &[ArgKind::Register, ArgKind::Register],
+                            ],
+                        ) {
+                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
+                                (0, Arg::Register(x), Arg::Byte(b)) => Ast::SkipEqByte(x, b),
+                                (1, Arg::Register(x), Arg::Register(y)) => Ast::SkipEqReg(x, y),
+                                _ => unreachable!(),
+                            }),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "SNE" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[
+                                &[ArgKind::Register, ArgKind::Byte],
+                                &[ArgKind::Register, ArgKind::Register],
+                            ],
+                        ) {
+                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
+                                (0, Arg::Register(x), Arg::Byte(b)) => Ast::SkipNotEqByte(x, b),
+                                (1, Arg::Register(x), Arg::Register(y)) => Ast::SkipNotEqReg(x, y),
+                                _ => unreachable!(),
+                            }),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "SHR" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[&[ArgKind::Register]],
+                        ) {
+                            Ok(x) => res.push(match (x, args[0].extra) {
+                                (0, Arg::Register(x)) => Ast::ShiftRight(x),
+                                _ => unreachable!(),
+                            }),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    "SHL" => {
+                        match expected_args_whole(
+                            id.clone(),
+                            &opcode,
+                            &args,
+                            &[&[ArgKind::Register]],
+                        ) {
+                            Ok(x) => res.push(match (x, args[0].extra) {
+                                (0, Arg::Register(x)) => Ast::ShiftLeft(x),
+                                _ => unreachable!(),
+                            }),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
+                    x => unreachable!("Unexpected opcode: {}", x),
+                }
             }
-            "RET" => {
-                match expected_args_whole(id.clone(), &opcode, &args, &[&[]]) {
-                    Ok(_) => res.push(Ast::Return),
-                    Err(e) => reports.extend(e),
-                };
+            Line::Label(label) => {
+                todo!("Symbol management code not written (Label: {})", label)
             }
-            "CALL" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[
-                        &[ArgKind::ConstantAddr],
-                        &[ArgKind::Register, ArgKind::ConstantAddr],
-                        &[ArgKind::Pointer],
-                    ],
-                ) {
-                    Ok(x) => res.push(match (x, args[0].extra, args.get(1).map(|x| x.extra)) {
-                        (0, Arg::ConstantAddr(ConstantAddr::Addr(x)), None) => Ast::Call(x),
-                        (1, Arg::Register(x), Some(Arg::ConstantAddr(ConstantAddr::Addr(y)))) => {
-                            Ast::CallOffset(x, y)
-                        }
-                        (2, Arg::ConstantAddr(ConstantAddr::Pointer), None) => Ast::CallPointer,
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "JP" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[
-                        &[ArgKind::ConstantAddr],
-                        &[ArgKind::Register, ArgKind::ConstantAddr],
-                        &[ArgKind::Pointer],
-                    ],
-                ) {
-                    Ok(x) => res.push(match (x, args[0].extra, args.get(1).map(|x| x.extra)) {
-                        (0, Arg::ConstantAddr(ConstantAddr::Addr(x)), None) => Ast::Jump(x),
-                        (1, Arg::Register(x), Some(Arg::ConstantAddr(ConstantAddr::Addr(y)))) => {
-                            Ast::JumpOffset(x, y)
-                        }
-                        (2, Arg::ConstantAddr(ConstantAddr::Pointer), None) => Ast::JumpPointer,
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "ADD" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[
-                        &[ArgKind::Register, ArgKind::Byte],
-                        &[ArgKind::Register, ArgKind::Register],
-                        &[ArgKind::Pointer, ArgKind::Register],
-                    ],
-                ) {
-                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                        (0, Arg::Register(x), Arg::Byte(b)) => Ast::AddByte(x, b),
-                        (1, Arg::Register(x), Arg::Register(y)) => Ast::AddReg(x, y),
-                        (2, Arg::ConstantAddr(ConstantAddr::Pointer), Arg::Register(y)) => {
-                            Ast::AddToPointer(y)
-                        }
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "SUB" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[&[ArgKind::Register, ArgKind::Register]],
-                ) {
-                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                        (0, Arg::Register(x), Arg::Register(y)) => Ast::Sub(x, y),
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "SUBN" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[&[ArgKind::Register, ArgKind::Register]],
-                ) {
-                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                        (0, Arg::Register(x), Arg::Register(y)) => Ast::SubNeg(x, y),
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "OR" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[&[ArgKind::Register, ArgKind::Register]],
-                ) {
-                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                        (0, Arg::Register(x), Arg::Register(y)) => Ast::Or(x, y),
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "XOR" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[&[ArgKind::Register, ArgKind::Register]],
-                ) {
-                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                        (0, Arg::Register(x), Arg::Register(y)) => Ast::Xor(x, y),
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "AND" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[&[ArgKind::Register, ArgKind::Register]],
-                ) {
-                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                        (0, Arg::Register(x), Arg::Register(y)) => Ast::And(x, y),
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "SE" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[
-                        &[ArgKind::Register, ArgKind::Byte],
-                        &[ArgKind::Register, ArgKind::Register],
-                    ],
-                ) {
-                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                        (0, Arg::Register(x), Arg::Byte(b)) => Ast::SkipEqByte(x, b),
-                        (1, Arg::Register(x), Arg::Register(y)) => Ast::SkipEqReg(x, y),
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "SNE" => {
-                match expected_args_whole(
-                    id.clone(),
-                    &opcode,
-                    &args,
-                    &[
-                        &[ArgKind::Register, ArgKind::Byte],
-                        &[ArgKind::Register, ArgKind::Register],
-                    ],
-                ) {
-                    Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                        (0, Arg::Register(x), Arg::Byte(b)) => Ast::SkipNotEqByte(x, b),
-                        (1, Arg::Register(x), Arg::Register(y)) => Ast::SkipNotEqReg(x, y),
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "SHR" => {
-                match expected_args_whole(id.clone(), &opcode, &args, &[&[ArgKind::Register]]) {
-                    Ok(x) => res.push(match (x, args[0].extra) {
-                        (0, Arg::Register(x)) => Ast::ShiftRight(x),
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            "SHL" => {
-                match expected_args_whole(id.clone(), &opcode, &args, &[&[ArgKind::Register]]) {
-                    Ok(x) => res.push(match (x, args[0].extra) {
-                        (0, Arg::Register(x)) => Ast::ShiftLeft(x),
-                        _ => unreachable!(),
-                    }),
-                    Err(e) => reports.extend(e),
-                };
-            }
-            x => unreachable!("Unexpected opcode: {}", x),
         }
     }
     println!("{} reports", reports.len());
@@ -352,11 +390,13 @@ enum ArgKind {
     Register,
     AddrPointer,
     Addr,
+    AddrSymbol,
     Pointer,
     ConstantAddr,
+    ConstantSymbol,
 }
 
-impl PartialEq<Arg> for ArgKind {
+impl<'a> PartialEq<Arg<'a>> for ArgKind {
     fn eq(&self, other: &Arg) -> bool {
         matches!(
             (self, other),
@@ -380,8 +420,10 @@ impl Display for ArgKind {
             ArgKind::Register => write!(f, "register"),
             ArgKind::AddrPointer => write!(f, "[I]"),
             ArgKind::Addr => write!(f, "[address]"),
+            ArgKind::AddrSymbol => write!(f, "[symbol]"),
             ArgKind::Pointer => write!(f, "I"),
             ArgKind::ConstantAddr => write!(f, "#address"),
+            ArgKind::ConstantSymbol => write!(f, "symbol"),
         }
     }
 }
@@ -392,15 +434,17 @@ impl Debug for ArgKind {
     }
 }
 
-impl From<&Arg> for ArgKind {
+impl<'a> From<&Arg<'a>> for ArgKind {
     fn from(a: &Arg) -> Self {
         match a {
             Arg::Addr(Addr::Addr(_)) => Self::Addr,
             Arg::Addr(Addr::Pointer) => Self::AddrPointer,
+            Arg::Addr(Addr::Symbol(_)) => Self::AddrSymbol,
             Arg::Byte(_) => Self::Byte,
             Arg::Register(_) => Self::Register,
             Arg::ConstantAddr(ConstantAddr::Pointer) => Self::Pointer,
             Arg::ConstantAddr(ConstantAddr::Addr(_)) => Self::ConstantAddr,
+            Arg::ConstantAddr(ConstantAddr::Symbol(_)) => Self::ConstantSymbol,
         }
     }
 }

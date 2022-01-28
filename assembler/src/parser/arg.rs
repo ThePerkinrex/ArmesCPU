@@ -12,7 +12,7 @@ use nom::{
 
 use crate::error::{context, Context};
 
-use super::{super::from_str_radix::FromStrRadix, tag, take_all, PResult, Span};
+use super::{super::from_str_radix::FromStrRadix, identifier, tag, take_all, PResult, Span};
 
 fn binary<N: FromStrRadix>(input: Span) -> PResult<N> {
     context(
@@ -65,9 +65,10 @@ fn constant_byte(i: Span) -> PResult<u8> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Addr {
+pub enum Addr<'a> {
     Pointer,
     Addr(u16),
+    Symbol(&'a str),
 }
 
 fn addr(i: Span) -> PResult<Addr> {
@@ -78,6 +79,7 @@ fn addr(i: Span) -> PResult<Addr> {
             cut(alt((
                 map(number, |s: Span<u16>| s.map(Addr::Addr)),
                 map(tag("I"), |x: Span| x.map(|_| Addr::Pointer)),
+                map(identifier, |x: Span| x.map(|_| Addr::Symbol(x.fragment()))),
             ))),
             char(']'),
         ),
@@ -85,9 +87,10 @@ fn addr(i: Span) -> PResult<Addr> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConstantAddr {
+pub enum ConstantAddr<'a> {
     Pointer,
     Addr(u16),
+    Symbol(&'a str),
 }
 
 fn constant_addr(i: Span) -> PResult<ConstantAddr> {
@@ -101,6 +104,9 @@ fn constant_addr(i: Span) -> PResult<ConstantAddr> {
                 )),
             ),
             map(tag("I"), |x: Span| x.map(|_| ConstantAddr::Pointer)),
+            map(identifier, |x: Span| {
+                x.map(|_| ConstantAddr::Symbol(x.fragment()))
+            }),
         )),
     )(i)
 }
@@ -119,21 +125,20 @@ fn register(i: Span) -> PResult<u8> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Arg {
-    Addr(Addr),
+pub enum Arg<'a> {
+    Addr(Addr<'a>),
     Byte(u8),
     Register(u8),
-    ConstantAddr(ConstantAddr),
+    ConstantAddr(ConstantAddr<'a>),
 }
 
 pub fn arg(i: Span) -> PResult<Arg> {
     context(
         Context::Arg,
         alt((
+            map(register, |x| x.map(Arg::Register)),
             map(constant_byte, |x| x.map(Arg::Byte)),
             map(addr, |x| x.map(Arg::Addr)),
-            map(register, |x| x.map(Arg::Register)),
-            map(register, |x| x.map(Arg::Register)),
             map(constant_addr, |x| x.map(Arg::ConstantAddr)),
         )),
     )(i)
@@ -177,7 +182,7 @@ mod tests {
         assert_nom_err(addr, Span::new("$10"));
         assert_nom_ok_extra(addr, Span::new("[10]"), "", Addr::Addr(10));
         assert_nom_ok_extra(addr, Span::new("[I]"), "", Addr::Pointer);
-        assert_nom_failure(addr, Span::new("[hi]"));
+        assert_nom_ok_extra(addr, Span::new("[hi]"), "", Addr::Symbol("hi"));
     }
 
     #[test]
@@ -185,6 +190,12 @@ mod tests {
         assert_nom_err(constant_addr, Span::new("$10"));
         assert_nom_ok_extra(constant_addr, Span::new("#10"), "", ConstantAddr::Addr(10));
         assert_nom_ok_extra(constant_addr, Span::new("I"), "", ConstantAddr::Pointer);
+        assert_nom_ok_extra(
+            constant_addr,
+            Span::new("hi"),
+            "",
+            ConstantAddr::Symbol("hi"),
+        );
         assert_nom_failure(constant_addr, Span::new("#hi"));
     }
 
@@ -218,7 +229,12 @@ mod tests {
             "AA",
             Arg::ConstantAddr(ConstantAddr::Pointer),
         );
-        assert_nom_err(arg, Span::new("AAAAAAAAAAAAAAAA"));
+        assert_nom_ok_extra(
+            arg,
+            Span::new("AAAAAAAAAAAAAAAA"),
+            "",
+            Arg::ConstantAddr(ConstantAddr::Symbol("AAAAAAAAAAAAAAAA")),
+        );
         // panic!()
     }
 }
