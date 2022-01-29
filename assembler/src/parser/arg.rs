@@ -22,7 +22,7 @@ fn binary<N: FromStrRadix>(input: Span) -> PResult<N> {
             cut(map_parser(
                 recognize(many1(terminated(one_of("01"), many0(char('_'))))),
                 map_res(take_all, |x: Span| {
-                    N::from_str_radix(x.fragment(), 2).map(|n| x.map(|_| n))
+                    N::from_str_radix(x.fragment(), 2).map(|n| x.map_extra(|_| n))
                 }),
             )),
         ),
@@ -37,7 +37,7 @@ fn hex<N: FromStrRadix>(input: Span) -> PResult<N> {
             cut(map_parser(
                 recognize(many1(terminated(hex_digit1, many0(char('_'))))),
                 map_res(take_all, |x: Span| {
-                    N::from_str_radix(x.fragment(), 16).map(|n| x.map(|_| n))
+                    N::from_str_radix(x.fragment(), 16).map(|n| x.map_extra(|_| n))
                 }),
             )),
         ),
@@ -50,7 +50,7 @@ fn decimal<N: FromStrRadix>(input: Span) -> PResult<N> {
         map_parser(
             recognize(many1(terminated(digit1, many0(char('_'))))),
             cut(map_res(take_all, |x: Span| {
-                N::from_str_radix(x.fragment(), 10).map(|n| x.map(|_| n))
+                N::from_str_radix(x.fragment(), 10).map(|n| x.map_extra(|_| n))
             })),
         ),
     )(input)
@@ -77,9 +77,11 @@ fn addr(i: Span) -> PResult<Addr> {
         delimited(
             char('['),
             cut(alt((
-                map(number, |s: Span<u16>| s.map(Addr::Addr)),
-                map(tag("I"), |x: Span| x.map(|_| Addr::Pointer)),
-                map(identifier, |x: Span| x.map(|_| Addr::Symbol(x.fragment()))),
+                map(number, |s: Span<u16>| s.map_extra(Addr::Addr)),
+                map(tag("I"), |x: Span| x.map_extra(|_| Addr::Pointer)),
+                map(identifier, |x: Span| {
+                    x.map_extra(|_| Addr::Symbol(x.fragment()))
+                }),
             ))),
             char(']'),
         ),
@@ -99,13 +101,13 @@ fn constant_addr(i: Span) -> PResult<ConstantAddr> {
         alt((
             preceded(
                 char('#'),
-                cut(alt(
-                    (map(number, |s: Span<u16>| s.map(ConstantAddr::Addr)),),
-                )),
+                cut(alt((map(number, |s: Span<u16>| {
+                    s.map_extra(ConstantAddr::Addr)
+                }),))),
             ),
-            map(tag("I"), |x: Span| x.map(|_| ConstantAddr::Pointer)),
+            map(tag("I"), |x: Span| x.map_extra(|_| ConstantAddr::Pointer)),
             map(identifier, |x: Span| {
-                x.map(|_| ConstantAddr::Symbol(x.fragment()))
+                x.map_extra(|_| ConstantAddr::Symbol(x.fragment()))
             }),
         )),
     )(i)
@@ -118,7 +120,7 @@ fn register(i: Span) -> PResult<u8> {
             char('V'),
             cut(map(
                 map_parser(take(1usize), all_consuming(hex_digit1)),
-                |x: Span| x.map(|_| u8::from_str_radix(x.fragment(), 16).unwrap()),
+                |x: Span| x.map_extra(|_| u8::from_str_radix(x.fragment(), 16).unwrap()),
             )),
         ),
     )(i)
@@ -136,10 +138,10 @@ pub fn arg(i: Span) -> PResult<Arg> {
     context(
         Context::Arg,
         alt((
-            map(register, |x| x.map(Arg::Register)),
-            map(constant_byte, |x| x.map(Arg::Byte)),
-            map(addr, |x| x.map(Arg::Addr)),
-            map(constant_addr, |x| x.map(Arg::ConstantAddr)),
+            map(register, |x| x.map_extra(Arg::Register)),
+            map(constant_byte, |x| x.map_extra(Arg::Byte)),
+            map(addr, |x| x.map_extra(Arg::Addr)),
+            map(constant_addr, |x| x.map_extra(Arg::ConstantAddr)),
         )),
     )(i)
 }

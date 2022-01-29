@@ -103,7 +103,7 @@ pub fn instr(i: Span) -> PResult<Instr> {
                 alt((space1, success(Span::new("")))),
                 separated_list0(|i2| tuple((char(','), space0))(i2), arg),
             ))),
-            |(c, (s, _, v))| c.map(|_| (s, v.clone())),
+            |(c, (s, _, v))| c.map_extra(|_| (s, v.clone())),
         ),
     )(i)
 }
@@ -144,10 +144,12 @@ pub fn line(i: Span) -> IResult<Span, Option<Span<Line>>, Error<Span>> {
         Context::Line,
         alt((
             map(tuple((space0, comment)), |_| None),
-            map(preceded(space0, label), |l| Some(l.map(|_| Line::Label(l)))),
+            map(preceded(space0, label), |l| {
+                Some(l.map_extra(|_| Line::Label(l)))
+            }),
             map(
                 tuple((space0, opt(instr), opt(pair(space0, comment)))),
-                |(_, x, _)| x.map(|x| x.map(Line::Instr)),
+                |(_, x, _)| x.map(|x| x.map_extra(Line::Instr)),
             ),
         )),
     )(i)
