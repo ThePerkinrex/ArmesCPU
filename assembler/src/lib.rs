@@ -8,7 +8,8 @@ use std::{
 };
 
 use ariadne::{Cache, Color, Label, Report};
-use asm_ir::{Ast, Program};
+use armes_elf::{Elf, Pointee};
+use asm_ir::{Ast, BytecodeInstr, BytecodeLen};
 use cache::{CacheStr, FsCache};
 use error::error_as_reports;
 use parser::{lines, Addr, Arg, ConstantAddr, Span};
@@ -31,7 +32,7 @@ pub fn parse<P: AsRef<Path>>(input: &[P], output: P) {
     }
     let program = if input.len() == 1 {
         let i = &input[0];
-        let v = match parse_file(&i.as_ref().to_path_buf(), &mut cache) {
+        match parse_file(&i.as_ref().to_path_buf(), &mut cache) {
             Err(ParseErr::Reports(r)) => {
                 for report in r {
                     report.eprint(&mut cache).unwrap();
@@ -43,12 +44,9 @@ pub fn parse<P: AsRef<Path>>(input: &[P], output: P) {
                 return; // Do not continue
             }
             Ok(v) => v,
-        };
-
-        let mut p = Program::new();
-        p.segments.push((0, v));
-        p
+        }
     } else {
+        // TODO Use linker
         todo!()
     };
 
@@ -77,7 +75,7 @@ impl<Id: std::fmt::Debug + Hash + Eq + Clone, E> From<Report<(Id, Range<usize>)>
     }
 }
 
-pub fn parse_file<'a, Id, C, E>(id: &'a Id, cache: &'a mut C) -> Result<Vec<Ast>, ParseErr<Id, E>>
+pub fn parse_file<'a, Id, C, E>(id: &'a Id, cache: &'a mut C) -> Result<Elf, ParseErr<Id, E>>
 where
     Id: std::fmt::Debug + Hash + Eq + Clone,
     C: Cache<Id> + CacheStr<Id, Error = E> + 'a,
@@ -96,6 +94,8 @@ where
     }
     let mut res = Vec::with_capacity(instrs.len());
     let mut reports = Vec::new();
+    let mut relocations = Vec::new();
+    let mut labels = Vec::new();
     for i in instrs {
         match i.extra {
             Line::Instr((opcode, args)) => {
@@ -135,10 +135,24 @@ where
                                     Arg::ConstantAddr(ConstantAddr::Pointer),
                                     Arg::ConstantAddr(ConstantAddr::Addr(x)),
                                 ) => Ast::LoadPointer(x),
+                                (
+                                    4,
+                                    Arg::ConstantAddr(ConstantAddr::Pointer),
+                                    Arg::ConstantAddr(ConstantAddr::Symbol(s)),
+                                ) => {
+                                    let addr = res.bytecode_len();
+                                    relocations.push((addr + 2, s.to_string()));
+                                    Ast::LoadPointer(0)
+                                }
                                 (5, Arg::ConstantAddr(ConstantAddr::Pointer), Arg::Register(x)) => {
                                     match args[2].extra {
                                         Arg::ConstantAddr(ConstantAddr::Addr(y)) => {
                                             Ast::LoadPointerOffset(x, y)
+                                        }
+                                        Arg::ConstantAddr(ConstantAddr::Symbol(s)) => {
+                                            let addr = res.bytecode_len();
+                                            relocations.push((addr + 2, s.to_string()));
+                                            Ast::LoadPointerOffset(x, 0)
                                         }
                                         _ => unreachable!(),
                                     }
@@ -170,11 +184,25 @@ where
                                     (0, Arg::ConstantAddr(ConstantAddr::Addr(x)), None) => {
                                         Ast::Call(x)
                                     }
+                                    (0, Arg::ConstantAddr(ConstantAddr::Symbol(s)), None) => {
+                                        let addr = res.bytecode_len();
+                                        relocations.push((addr + 2, s.to_string()));
+                                        Ast::Call(0)
+                                    }
                                     (
                                         1,
                                         Arg::Register(x),
                                         Some(Arg::ConstantAddr(ConstantAddr::Addr(y))),
                                     ) => Ast::CallOffset(x, y),
+                                    (
+                                        1,
+                                        Arg::Register(x),
+                                        Some(Arg::ConstantAddr(ConstantAddr::Symbol(s))),
+                                    ) => {
+                                        let addr = res.bytecode_len();
+                                        relocations.push((addr + 2, s.to_string()));
+                                        Ast::CallOffset(x, 0)
+                                    }
                                     (2, Arg::ConstantAddr(ConstantAddr::Pointer), None) => {
                                         Ast::CallPointer
                                     }
@@ -200,11 +228,25 @@ where
                                     (0, Arg::ConstantAddr(ConstantAddr::Addr(x)), None) => {
                                         Ast::Jump(x)
                                     }
+                                    (0, Arg::ConstantAddr(ConstantAddr::Symbol(s)), None) => {
+                                        let addr = res.bytecode_len();
+                                        relocations.push((addr + 2, s.to_string()));
+                                        Ast::Jump(0)
+                                    }
                                     (
                                         1,
                                         Arg::Register(x),
                                         Some(Arg::ConstantAddr(ConstantAddr::Addr(y))),
                                     ) => Ast::JumpOffset(x, y),
+                                    (
+                                        1,
+                                        Arg::Register(x),
+                                        Some(Arg::ConstantAddr(ConstantAddr::Symbol(s))),
+                                    ) => {
+                                        let addr = res.bytecode_len();
+                                        relocations.push((addr + 2, s.to_string()));
+                                        Ast::JumpOffset(x, 0)
+                                    }
                                     (2, Arg::ConstantAddr(ConstantAddr::Pointer), None) => {
                                         Ast::JumpPointer
                                     }
@@ -374,7 +416,10 @@ where
                 }
             }
             Line::Label(label) => {
-                todo!("Symbol management code not written (Label: {})", label)
+                let curr_addr = res.bytecode_len();
+                // TODO calculate virtual mem address fot this file, not file pos
+                labels.push(((*label.fragment()).into(), Pointee::Address(curr_addr as u16)));
+                // todo!("Symbol management code not written (Label: {})", label)
             }
         }
     }
@@ -382,7 +427,19 @@ where
     if !reports.is_empty() {
         return Err(reports.into());
     }
-    Ok(res)
+    let mut elf = Elf::new(vec![(
+        0,
+        res.into_iter()
+            .flat_map(|x| BytecodeInstr::from(x).into_iter())
+            .collect(),
+    )]); // FIXME for now only one segment is used
+    for (reladdr, relsym) in relocations {
+        elf.relocate(0, reladdr as u16, relsym)
+    }
+    for (s, p) in labels {
+        elf.define(s, p);
+    }
+    Ok(elf)
 }
 
 enum ArgKind {
@@ -390,10 +447,8 @@ enum ArgKind {
     Register,
     AddrPointer,
     Addr,
-    AddrSymbol,
     Pointer,
     ConstantAddr,
-    ConstantSymbol,
 }
 
 impl<'a> PartialEq<Arg<'a>> for ArgKind {
@@ -404,10 +459,15 @@ impl<'a> PartialEq<Arg<'a>> for ArgKind {
                 | (ArgKind::Register, Arg::Register(_))
                 | (ArgKind::AddrPointer, Arg::Addr(Addr::Pointer))
                 | (ArgKind::Addr, Arg::Addr(Addr::Addr(_)))
+                | (ArgKind::Addr, Arg::Addr(Addr::Symbol(_)))
                 | (ArgKind::Pointer, Arg::ConstantAddr(ConstantAddr::Pointer))
                 | (
                     ArgKind::ConstantAddr,
                     Arg::ConstantAddr(ConstantAddr::Addr(_))
+                )
+                | (
+                    ArgKind::ConstantAddr,
+                    Arg::ConstantAddr(ConstantAddr::Symbol(_))
                 )
         )
     }
@@ -420,10 +480,8 @@ impl Display for ArgKind {
             ArgKind::Register => write!(f, "register"),
             ArgKind::AddrPointer => write!(f, "[I]"),
             ArgKind::Addr => write!(f, "[address]"),
-            ArgKind::AddrSymbol => write!(f, "[symbol]"),
             ArgKind::Pointer => write!(f, "I"),
             ArgKind::ConstantAddr => write!(f, "#address"),
-            ArgKind::ConstantSymbol => write!(f, "symbol"),
         }
     }
 }
@@ -437,14 +495,13 @@ impl Debug for ArgKind {
 impl<'a> From<&Arg<'a>> for ArgKind {
     fn from(a: &Arg) -> Self {
         match a {
-            Arg::Addr(Addr::Addr(_)) => Self::Addr,
+            Arg::Addr(Addr::Addr(_)) | Arg::Addr(Addr::Symbol(_)) => Self::Addr,
             Arg::Addr(Addr::Pointer) => Self::AddrPointer,
-            Arg::Addr(Addr::Symbol(_)) => Self::AddrSymbol,
             Arg::Byte(_) => Self::Byte,
             Arg::Register(_) => Self::Register,
             Arg::ConstantAddr(ConstantAddr::Pointer) => Self::Pointer,
-            Arg::ConstantAddr(ConstantAddr::Addr(_)) => Self::ConstantAddr,
-            Arg::ConstantAddr(ConstantAddr::Symbol(_)) => Self::ConstantSymbol,
+            Arg::ConstantAddr(ConstantAddr::Addr(_))
+            | Arg::ConstantAddr(ConstantAddr::Symbol(_)) => Self::ConstantAddr,
         }
     }
 }
@@ -625,7 +682,107 @@ fn expected_args_whole<Id: std::fmt::Debug + Hash + Eq + Clone>(
                     })
                     .with_color(Color::Red),
             )
+            .with_note(format!("Found {}", ArgKind::from(& args[start_idx].extra)))
             .finish()])
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use armes_elf::{Elf, Pointee};
+
+    use crate::{parse_file, cache::{StrCache, OnlyOne}, ParseErr};
+
+    #[test]
+    fn parse_file_empty_test() {
+        let mut cache = StrCache::new("");
+        let r = parse_file(&OnlyOne, &mut cache);
+        match r {
+            Err(ParseErr::FileError(())) => unreachable!(),
+            Err(ParseErr::Reports(r)) => {
+                for report in r {
+                    report.eprint(cache.clone()).unwrap();
+                }
+                panic!("Errors generated")
+            }
+            Ok(elf) => {
+                assert_eq!(elf, Elf::new(vec![(0, vec![])]))
+            }
+        }
+    }
+
+    #[test]
+    fn parse_file_fib_test() {
+        let mut cache = StrCache::new("LD V0, $0 ; y
+        LD V1, $1 ; y
+        LD V2, $0 ; a
+        
+        LD I, #0xF005 ; Serial NUMBER out
+        LD V2, V1 ; swap part 1
+        ADD V1, V0 ; Addition
+        LD V0, V2 ; swap part 2
+        LD [I], V0 ; Print
+        ; Reset if overflow
+        SNE VF, $0
+        JP #0x000A
+        LD VF, $0
+        JP #26 ; loop");
+        let r = parse_file(&OnlyOne, &mut cache);
+        match r {
+            Err(ParseErr::FileError(())) => unreachable!(),
+            Err(ParseErr::Reports(r)) => {
+                for report in r {
+                    report.eprint(cache.clone()).unwrap();
+                }
+                panic!("Errors generated")
+            }
+            Ok(elf) => {
+                assert_eq!(elf, Elf::new(vec![(0, vec![0, 96, 1, 97, 0, 98, 2, 16, 5, 240, 16, 130, 4, 129, 32, 128, 85, 240, 0, 79, 0, 16, 10, 0, 0, 111, 0, 16, 26, 0])]))
+            }
+        }
+    }
+
+    #[test]
+    fn parse_file_symbol_test() {
+        let mut cache = StrCache::new("CALL memcpy");
+        let r = parse_file(&OnlyOne, &mut cache);
+        match r {
+            Err(ParseErr::FileError(())) => unreachable!(),
+            Err(ParseErr::Reports(r)) => {
+                for report in r {
+                    report.eprint(cache.clone()).unwrap();
+                }
+                panic!("Errors generated")
+            }
+            Ok(elf) => {
+                let mut expected_elf = Elf::new(vec![(0, vec![1, 16, 0, 0])]);
+                expected_elf.relocate(0, 2, "memcpy".into());
+                assert_eq!(elf, expected_elf)
+            }
+        }
+    }
+
+    #[test]
+    fn parse_file_label_test() {
+        let mut cache = StrCache::new("
+        memcpy:
+        JP memcpy");
+        let r = parse_file(&OnlyOne, &mut cache);
+        match r {
+            Err(ParseErr::FileError(())) => unreachable!(),
+            Err(ParseErr::Reports(r)) => {
+                for report in r {
+                    report.eprint(cache.clone()).unwrap();
+                }
+                panic!("Errors generated")
+            }
+            Ok(elf) => {
+                let mut expected_elf = Elf::new(vec![(0, vec![0, 16, 0, 0])]);
+                expected_elf.relocate(0, 2, "memcpy".into());
+                expected_elf.define("memcpy".into(), Pointee::Address(0));
+                assert_eq!(elf, expected_elf)
+            }
         }
     }
 }

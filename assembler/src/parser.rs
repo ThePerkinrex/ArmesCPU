@@ -5,7 +5,7 @@ use nom::{
     combinator::{consumed, cut, eof, map, map_parser, not, opt, peek, recognize, success, value},
     error::ParseError,
     multi::{many0, separated_list0},
-    sequence::{pair, terminated, tuple},
+    sequence::{pair, terminated, tuple, preceded},
     Compare, CompareResult, IResult, InputLength, InputTake, InputTakeAtPosition, Parser,
 };
 use nom_locate::LocatedSpan;
@@ -135,11 +135,16 @@ pub fn comment<'a>(i: Span<'a>) -> PResult {
     )(i)
 }
 
+fn label(i: Span) -> PResult {
+    terminated(identifier, char(':'))(i)
+}
+
 pub fn line(i: Span) -> IResult<Span, Option<Span<Line>>, Error<Span>> {
     context(
         Context::Line,
         alt((
             map(tuple((space0, comment)), |_| None),
+            map(preceded(space0, label), |l| Some(l.map(|_| Line::Label(l)))),
             map(
                 tuple((space0, opt(instr), opt(pair(space0, comment)))),
                 |(_, x, _)| x.map(|x| x.map(Line::Instr)),

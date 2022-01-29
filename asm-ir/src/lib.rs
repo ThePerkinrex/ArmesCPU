@@ -180,6 +180,16 @@ impl Len for Ast {
     }
 }
 
+pub trait BytecodeLen {
+    fn bytecode_len(&self) -> usize;
+}
+
+impl BytecodeLen for [Ast] {
+    fn bytecode_len(&self) -> usize {
+        self.iter().map(|x| x.len()).sum()
+    }
+}
+
 impl IntoIterator for BytecodeInstr {
     type Item = u8;
 
@@ -276,6 +286,12 @@ impl<I: Len> Len for AstExtended<I> {
             AstExtended::Ast(a) => a.is_empty(),
             AstExtended::Data(b) => b.is_empty(),
         }
+    }
+}
+
+impl<I: Len> BytecodeLen for [AstExtended<I>] {
+    fn bytecode_len(&self) -> usize {
+        self.iter().map(|x| x.len()).sum()
     }
 }
 

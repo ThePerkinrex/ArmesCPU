@@ -84,6 +84,44 @@ impl Display for OnlyOne {
     }
 }
 
+pub struct StrCache {
+    source: Source,
+    s: &'static str
+}
+
+impl StrCache {
+    pub fn new(s: &'static str) -> Self {
+        Self {
+            source: s.into(),
+            s
+        }
+    }
+}
+
+impl Clone for StrCache {
+    fn clone(&self) -> Self {
+        Self { source: self.s.into(), s: self.s }
+    }
+}
+
+impl CacheStr<OnlyOne> for StrCache{
+    type Error = ();
+
+    fn get_str<'a>(&'a mut self, _: &OnlyOne) -> Result<&'a str, Self::Error> {
+        Ok(self.s)
+    }
+}
+
+impl ariadne::Cache<OnlyOne> for StrCache {
+    fn fetch(&mut self, _: &OnlyOne) -> Result<&Source, Box<dyn std::fmt::Debug + '_>> {
+        Ok(&self.source)
+    }
+
+    fn display<'a>(&self, id: &'a OnlyOne) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(id))
+    }
+}
+
 #[derive(Default)]
 pub struct FsCache {
     cache: Cache<PathBuf>,

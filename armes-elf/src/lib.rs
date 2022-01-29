@@ -51,6 +51,9 @@ impl Elf {
     }
 
     pub fn relocate(&mut self, sect: u16, addr: u16, sym: String) {
+        if !self.symbols.contains_key(&sym) {
+            self.declare(sym.clone()) // Declare the symbol if not done already
+        }
         self.relocations.push((sect, addr, sym))
     }
 

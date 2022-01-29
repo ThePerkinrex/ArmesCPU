@@ -13,6 +13,7 @@ nom = "7"
 nom_locate = "4"
 ariadne = "0.1"
 asm-ir = {path="../asm-ir"}
+armes-elf = {path="../armes-elf"}
 clap = { version = "3", features = ["derive"], optional=true }
 
 
