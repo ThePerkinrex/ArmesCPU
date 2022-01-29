@@ -418,7 +418,10 @@ where
             Line::Label(label) => {
                 let curr_addr = res.bytecode_len();
                 // TODO calculate virtual mem address fot this file, not file pos
-                labels.push(((*label.fragment()).into(), Pointee::Address(curr_addr as u16)));
+                labels.push((
+                    (*label.fragment()).into(),
+                    Pointee::Address(curr_addr as u16),
+                ));
                 // todo!("Symbol management code not written (Label: {})", label)
             }
         }
@@ -682,7 +685,7 @@ fn expected_args_whole<Id: std::fmt::Debug + Hash + Eq + Clone>(
                     })
                     .with_color(Color::Red),
             )
-            .with_note(format!("Found {}", ArgKind::from(& args[start_idx].extra)))
+            .with_note(format!("Found {}", ArgKind::from(&args[start_idx].extra)))
             .finish()])
         }
     }
@@ -692,7 +695,10 @@ fn expected_args_whole<Id: std::fmt::Debug + Hash + Eq + Clone>(
 mod tests {
     use armes_elf::{Elf, Pointee};
 
-    use crate::{parse_file, cache::{StrCache, OnlyOne}, ParseErr};
+    use crate::{
+        cache::{OnlyOne, StrCache},
+        parse_file, ParseErr,
+    };
 
     #[test]
     fn parse_file_empty_test() {
@@ -714,7 +720,8 @@ mod tests {
 
     #[test]
     fn parse_file_fib_test() {
-        let mut cache = StrCache::new("LD V0, $0 ; y
+        let mut cache = StrCache::new(
+            "LD V0, $0 ; y
         LD V1, $1 ; y
         LD V2, $0 ; a
         
@@ -727,7 +734,8 @@ mod tests {
         SNE VF, $0
         JP #0x000A
         LD VF, $0
-        JP #26 ; loop");
+        JP #26 ; loop",
+        );
         let r = parse_file(&OnlyOne, &mut cache);
         match r {
             Err(ParseErr::FileError(())) => unreachable!(),
@@ -738,7 +746,16 @@ mod tests {
                 panic!("Errors generated")
             }
             Ok(elf) => {
-                assert_eq!(elf, Elf::new(vec![(0, vec![0, 96, 1, 97, 0, 98, 2, 16, 5, 240, 16, 130, 4, 129, 32, 128, 85, 240, 0, 79, 0, 16, 10, 0, 0, 111, 0, 16, 26, 0])]))
+                assert_eq!(
+                    elf,
+                    Elf::new(vec![(
+                        0,
+                        vec![
+                            0, 96, 1, 97, 0, 98, 2, 16, 5, 240, 16, 130, 4, 129, 32, 128, 85, 240,
+                            0, 79, 0, 16, 10, 0, 0, 111, 0, 16, 26, 0
+                        ]
+                    )])
+                )
             }
         }
     }
@@ -765,9 +782,11 @@ mod tests {
 
     #[test]
     fn parse_file_label_test() {
-        let mut cache = StrCache::new("
+        let mut cache = StrCache::new(
+            "
         memcpy:
-        JP memcpy");
+        JP memcpy",
+        );
         let r = parse_file(&OnlyOne, &mut cache);
         match r {
             Err(ParseErr::FileError(())) => unreachable!(),

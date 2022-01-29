@@ -5,7 +5,7 @@ use nom::{
     combinator::{consumed, cut, eof, map, map_parser, not, opt, peek, recognize, success, value},
     error::ParseError,
     multi::{many0, separated_list0},
-    sequence::{pair, terminated, tuple, preceded},
+    sequence::{pair, preceded, terminated, tuple},
     Compare, CompareResult, IResult, InputLength, InputTake, InputTakeAtPosition, Parser,
 };
 use nom_locate::LocatedSpan;

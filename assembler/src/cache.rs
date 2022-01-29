@@ -86,25 +86,28 @@ impl Display for OnlyOne {
 
 pub struct StrCache {
     source: Source,
-    s: &'static str
+    s: &'static str,
 }
 
 impl StrCache {
     pub fn new(s: &'static str) -> Self {
         Self {
             source: s.into(),
-            s
+            s,
         }
     }
 }
 
 impl Clone for StrCache {
     fn clone(&self) -> Self {
-        Self { source: self.s.into(), s: self.s }
+        Self {
+            source: self.s.into(),
+            s: self.s,
+        }
     }
 }
 
-impl CacheStr<OnlyOne> for StrCache{
+impl CacheStr<OnlyOne> for StrCache {
     type Error = ();
 
     fn get_str<'a>(&'a mut self, _: &OnlyOne) -> Result<&'a str, Self::Error> {
