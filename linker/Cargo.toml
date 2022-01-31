@@ -7,3 +7,5 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+armes-elf = {path = "../armes-elf"}
+asm-ir = {path = "../asm-ir"}
