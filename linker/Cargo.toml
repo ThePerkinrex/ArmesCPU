@@ -8,4 +8,4 @@ license = "MIT"
 
 [dependencies]
 armes-elf = {path = "../armes-elf"}
-asm-ir = {path = "../asm-ir"}
+# asm-ir = {path = "../asm-ir"}

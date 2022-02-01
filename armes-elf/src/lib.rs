@@ -64,6 +64,19 @@ impl Elf {
     pub fn data(&self) -> &[(u16, Vec<u8>)] {
         &self.data
     }
+
+    pub fn relocations(&self) -> &[(u16, u16, String)] {
+        &self.relocations
+    }
+
+    pub fn symbols(&self) -> &HashMap<String, Pointee> {
+        &self.symbols
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn into_inner(self) -> (Vec<(u16, Vec<u8>)>, Vec<(u16, u16, String)>, HashMap<String, Pointee>,) {
+        (self.data, self.relocations, self.symbols)
+    }
 }
 
 #[cfg(test)]
