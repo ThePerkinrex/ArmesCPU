@@ -74,7 +74,13 @@ impl Elf {
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn into_inner(self) -> (Vec<(u16, Vec<u8>)>, Vec<(u16, u16, String)>, HashMap<String, Pointee>,) {
+    pub fn into_inner(
+        self,
+    ) -> (
+        Vec<(u16, Vec<u8>)>,
+        Vec<(u16, u16, String)>,
+        HashMap<String, Pointee>,
+    ) {
         (self.data, self.relocations, self.symbols)
     }
 }

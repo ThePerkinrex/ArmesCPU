@@ -39,13 +39,15 @@ fn elf_to_program(
             }),
     );
     let mut resolved = HashMap::new();
-    resolved.extend(symbols
-        .iter()
-        .filter(|(_, i)| matches!(i, Pointee::Address(_)))
-        .map(|(symbol, p)| match p {
-            Pointee::Address(addr) => (symbol.clone(), *addr),
-            _ => unreachable!(),
-        }));
+    resolved.extend(
+        symbols
+            .iter()
+            .filter(|(_, i)| matches!(i, Pointee::Address(_)))
+            .map(|(symbol, p)| match p {
+                Pointee::Address(addr) => (symbol.clone(), *addr),
+                _ => unreachable!(),
+            }),
+    );
     // TODO add Pointee:Symbol
     // symbols.iter()
     // .filter(|(_, i)| matches!(i, Pointee::Symbol(_)))

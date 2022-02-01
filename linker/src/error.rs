@@ -1,4 +1,4 @@
 pub enum ProgramLinkError {
-	SymbolNotDefined(String, String),
-	SymbolNotDeclared(String, String)
+    SymbolNotDefined(String, String),
+    SymbolNotDeclared(String, String),
 }
