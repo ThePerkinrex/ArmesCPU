@@ -48,14 +48,38 @@ fn elf_to_program(
                 _ => unreachable!(),
             }),
     );
-    // TODO add Pointee:Symbol
-    // symbols.iter()
-    // .filter(|(_, i)| matches!(i, Pointee::Symbol(_)))
-    // .map(|(symbol, p)| (symbol, match p {
-    //     Pointee::Symbol(s) => s,
-    //     _ => unreachable!(),
-    // })).flat_map(|(origin, pointed)| if resolved.contains_key(pointed) {});
+    // add Pointee::Symbol
+    loop {
+        let mut resolved_sth = false;
+        resolved.extend(
+            symbols
+                .iter()
+                .filter(|(_, i)| matches!(i, Pointee::Symbol(_)))
+                .map(|(symbol, p)| {
+                    (
+                        symbol,
+                        match p {
+                            Pointee::Symbol(s) => s,
+                            _ => unreachable!(),
+                        },
+                    )
+                })
+                .filter(|(s, _)| !resolved.contains_key(*s))
+                .filter(|(_, s)| resolved.contains_key(*s))
+                .map(|(symbol, points)| {
+                    resolved_sth = true;
+                    (symbol.clone(), resolved[points])
+                })
+                .collect::<Vec<_>>()
+                .into_iter(),
+        );
+
+        if !resolved_sth {
+            break;
+        }
+    }
     // Replace relocations
+    // TODO
     if errors.is_empty() {
         Ok(data)
     } else {
