@@ -78,8 +78,34 @@ fn elf_to_program(
             break;
         }
     }
-    // Replace relocations
-    // TODO
+    errors.extend(
+        symbols
+            .into_iter()
+            .filter(|(s, _)| resolved.contains_key(s))
+            .map(|(s, _)| {
+                let x = origin.get(&s).expect("Symbol defined in a file").clone();
+                ProgramLinkError::SymbolNotDeclared(s, x)
+            }),
+    );
+    if errors.is_empty() {
+        // Replace relocations
+        for (sect, fileaddr, sym, memaddr) in relocations.iter().map(|(a, b, c)| (a, b, c, resolved.get(c))) {
+            if let Some(memaddr) = memaddr {
+                if let Some((_, segment)) = data.get_mut(*sect as usize) {
+                    if let Some(x) = segment.get_mut(*fileaddr as usize..*fileaddr as usize+4) {
+                        x.copy_from_slice(&memaddr.to_le_bytes())
+                    }else{
+                        errors.push(ProgramLinkError::SegmentAddrNotFound(sym.clone(), *sect, *fileaddr))
+                    }
+                }else{
+                    errors.push(ProgramLinkError::SegmentNotFound(sym.clone(), *sect))
+                }
+            } else {
+                errors.push(ProgramLinkError::SymbolNotDefined(sym.clone(), origin.get(sym).expect("Symbol defined in a file").clone()));
+            }
+
+        }
+    }
     if errors.is_empty() {
         Ok(data)
     } else {
