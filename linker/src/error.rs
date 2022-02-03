@@ -3,5 +3,5 @@ pub enum ProgramLinkError {
     SymbolNotDeclared(String, String),
     /// Symbol, section, addr
     SegmentNotFound(String, u16),
-    SegmentAddrNotFound(String, u16, u16)
+    SegmentAddrNotFound(String, u16, u16),
 }
