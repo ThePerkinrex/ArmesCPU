@@ -8,12 +8,34 @@ mod error;
 
 use error::ProgramLinkError;
 
-fn link_to_elf_with_info(files: &[(Elf, String)]) -> (Elf, HashMap<String, String>) {
-    todo!()
+fn link_to_elf_with_info(
+    files: &[(Elf, String)],
+) -> Result<(Elf, HashMap<String, String>), Vec<ProgramLinkError>> {
+    let mut info: HashMap<String, String> = HashMap::new();
+    let mut errors = Vec::new();
+    for (file, name) in files {
+        for s in file.symbols().keys() {
+            if let Some(og) = info.get(s) {
+                errors.push(ProgramLinkError::DuplicateSymbol(
+                    s.clone(),
+                    og.clone(),
+                    name.clone(),
+                ))
+            } else {
+                info.insert(s.clone(), name.clone());
+            }
+        }
+    }
+    // TODO Actually link elf files
+    if !errors.is_empty() {
+        Err(errors)
+    } else {
+        Ok((todo!(), info))
+    }
 }
 
-pub fn link_to_elf(files: &[(Elf, String)]) -> Elf {
-    link_to_elf_with_info(files).0
+pub fn link_to_elf(files: &[(Elf, String)]) -> Result<Elf, Vec<ProgramLinkError>> {
+    link_to_elf_with_info(files).map(|(x, _)| x)
 }
 
 /// Expects all symbols to be defined
@@ -123,7 +145,7 @@ fn elf_to_program(
 }
 
 pub fn link_to_program(files: &[(Elf, String)]) -> Result<Program, Vec<ProgramLinkError>> {
-    let (elf, symbols) = link_to_elf_with_info(files);
+    let (elf, symbols) = link_to_elf_with_info(files)?;
     elf_to_program(elf, symbols)
 }
 
