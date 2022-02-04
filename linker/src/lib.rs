@@ -9,11 +9,12 @@ mod error;
 use error::ProgramLinkError;
 
 fn link_to_elf_with_info(
-    files: &[(Elf, String)],
+    files: Vec<(Elf, String)>,
 ) -> Result<(Elf, HashMap<String, String>), Vec<ProgramLinkError>> {
     let mut info: HashMap<String, String> = HashMap::new();
     let mut errors = Vec::new();
-    for (file, name) in files {
+    // Generate symbol information
+    for (file, name) in &files {
         for s in file.symbols().keys() {
             if let Some(og) = info.get(s) {
                 errors.push(ProgramLinkError::DuplicateSymbol(
@@ -26,15 +27,41 @@ fn link_to_elf_with_info(
             }
         }
     }
-    // TODO Actually link elf files
-    if !errors.is_empty() {
-        Err(errors)
+    // Actually link elf files
+    if errors.is_empty() {
+        let mut fat_elf = Elf::new(vec![]);
+        let mut data = Vec::new();
+        let mut start_addr = 0;
+        let mut i = 0;
+        for (elf, _) in files {
+            let (segments, relocations, symbols) = elf.into_inner();
+            for (symbol, pointee) in symbols {
+                fat_elf.define(
+                    symbol,
+                    match pointee {
+                        Pointee::Address(vaddr) => Pointee::Address(start_addr as u16 + vaddr),
+                        p => p,
+                    },
+                )
+            }
+            for (segment, addr, symbol) in relocations {
+                fat_elf.relocate(segment + i as u16, addr, symbol);
+            }
+
+            if let Some((addr, bytes)) = segments.last() {
+                start_addr += *addr as usize + bytes.len();
+            }
+            i += segments.len();
+            data.extend(segments.into_iter());
+        }
+        fat_elf.data = data;
+        Ok((fat_elf, info))
     } else {
-        Ok((todo!(), info))
+        Err(errors)
     }
 }
 
-pub fn link_to_elf(files: &[(Elf, String)]) -> Result<Elf, Vec<ProgramLinkError>> {
+pub fn link_to_elf(files: Vec<(Elf, String)>) -> Result<Elf, Vec<ProgramLinkError>> {
     link_to_elf_with_info(files).map(|(x, _)| x)
 }
 
@@ -144,16 +171,12 @@ fn elf_to_program(
     }
 }
 
-pub fn link_to_program(files: &[(Elf, String)]) -> Result<Program, Vec<ProgramLinkError>> {
+pub fn link_to_program(files: Vec<(Elf, String)>) -> Result<Program, Vec<ProgramLinkError>> {
     let (elf, symbols) = link_to_elf_with_info(files)?;
     elf_to_program(elf, symbols)
 }
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
+    // TODO write tests
 }

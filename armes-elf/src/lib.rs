@@ -28,7 +28,7 @@ impl Default for Pointee {
 pub struct Elf {
     symbols: HashMap<String, Pointee>,
     relocations: Vec<(u16, u16, String)>,
-    data: Vec<(u16, Vec<u8>)>,
+    pub data: Vec<(u16, Vec<u8>)>,
 }
 
 impl Elf {
@@ -45,7 +45,7 @@ impl Elf {
         self.symbols.insert(symbol, Pointee::None);
     }
 
-    /// Declares if not present, points sym[bol to vaddr
+    /// Declares if not present, points symbol to vaddr
     pub fn define(&mut self, symbol: String, addr: Pointee) {
         *self.symbols.entry(symbol).or_default() = addr;
     }
