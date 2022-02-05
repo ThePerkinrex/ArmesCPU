@@ -13,7 +13,8 @@ nom = "7"
 nom_locate = "4"
 ariadne = "0.1"
 asm-ir = {path="../asm-ir"}
-armes-elf = {path="../armes-elf"}
+armes-elf = {path="../armes-elf", default-features = false, features = ["write"]}
+linker = {path = "../linker", default-features = false}
 clap = { version = "3", features = ["derive"], optional=true }
 
 

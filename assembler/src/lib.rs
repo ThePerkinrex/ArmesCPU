@@ -46,8 +46,27 @@ pub fn parse<P: AsRef<Path>>(input: &[P], output: P) {
             Ok(v) => v,
         }
     } else {
-        // TODO Use linker
-        todo!()
+        // TODO Compile in paralel
+        let files = input
+            .iter()
+            .flat_map(|i| {
+                let path = i.as_ref().to_path_buf();
+                match parse_file(&path, &mut cache) {
+                    Err(ParseErr::Reports(r)) => {
+                        for report in r {
+                            report.eprint(&mut cache).unwrap();
+                        }
+                        None // Do not continue
+                    }
+                    Err(ParseErr::FileError(e)) => {
+                        eprintln!("File error: {}", e);
+                        None // Do not continue
+                    }
+                    Ok(v) => Some((v, path.file_name().unwrap().to_string_lossy().to_string())),
+                }
+            })
+            .collect::<Vec<_>>();
+        linker::link_to_elf(files).unwrap()
     };
 
     let mut f = File::create(output).unwrap();
