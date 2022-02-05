@@ -1,6 +1,6 @@
 #![cfg(feature = "cli")]
 
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf, process::exit};
 
 use armes_elf::Elf;
 use asm_ir::Program;
@@ -28,15 +28,37 @@ fn main() {
     let args = Args::parse();
     let mut elf_files = Vec::with_capacity(args.files.len());
     for f in args.files {
-        let e = Elf::parse(&std::fs::read(&f).unwrap()).unwrap();
+        let e = match Elf::parse(&std::fs::read(&f).unwrap()) {
+            Ok(x) => x,
+            Err(e) => {
+                eprintln!("Error parsing ELF file {}: {e:?}", f.display());
+                exit(1)
+            }
+        };
         elf_files.push((e, f.file_name().unwrap().to_string_lossy().to_string()))
     }
     if let Some(elf) = args.elf {
-        let elf_file = link_to_elf(elf_files).unwrap();
+        let elf_file = match link_to_elf(elf_files) {
+            Ok(x) => x,
+            Err(e) => {
+                for e in e {
+                    eprintln!("Error linking ELF files: {e}");
+                }
+                exit(2)
+            }
+        };
         elf_file.write(&mut File::create(elf).unwrap()).unwrap();
     } else {
         let program = Program {
-            segments: link_to_program(elf_files).unwrap(),
+            segments: match link_to_program(elf_files) {
+                Ok(x) => x,
+                Err(e) => {
+                    for e in e {
+                        eprintln!("Error linking ELF files: {e}");
+                    }
+                    exit(3)
+                }
+            },
         };
 
         program.write(&mut File::create(args.out).unwrap()).unwrap();

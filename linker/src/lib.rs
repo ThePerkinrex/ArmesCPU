@@ -6,11 +6,11 @@ pub type Program = Vec<(u16, Vec<u8>)>;
 
 mod error;
 
-use error::ProgramLinkError;
+use error::{ElfError, ProgramLinkError};
 
 fn link_to_elf_with_info(
     files: Vec<(Elf, String)>,
-) -> Result<(Elf, HashMap<String, String>), Vec<ProgramLinkError>> {
+) -> Result<(Elf, HashMap<String, String>), Vec<ElfError>> {
     let mut info: HashMap<String, String> = HashMap::new();
     let mut errors = Vec::new();
     // Generate symbol information
@@ -18,7 +18,7 @@ fn link_to_elf_with_info(
         for (s, p) in file.symbols() {
             if p != &Pointee::None {
                 if let Some(og) = info.get(s) {
-                    errors.push(ProgramLinkError::DuplicateSymbol(
+                    errors.push(ElfError::DuplicateSymbol(
                         s.clone(),
                         og.clone(),
                         name.clone(),
@@ -26,6 +26,14 @@ fn link_to_elf_with_info(
                 } else {
                     info.insert(s.clone(), name.clone());
                 }
+            }
+        }
+    }
+    // Fill nones
+    for (file, name) in &files {
+        for (s, p) in file.symbols() {
+            if !info.contains_key(s) && p == &Pointee::None {
+                info.insert(s.clone(), name.clone());
             }
         }
     }
@@ -67,7 +75,7 @@ fn link_to_elf_with_info(
     }
 }
 
-pub fn link_to_elf(files: Vec<(Elf, String)>) -> Result<Elf, Vec<ProgramLinkError>> {
+pub fn link_to_elf(files: Vec<(Elf, String)>) -> Result<Elf, Vec<ElfError>> {
     link_to_elf_with_info(files).map(|(x, _)| x)
 }
 
@@ -84,13 +92,7 @@ fn elf_to_program(
             .iter()
             .filter(|(_, i)| **i == Pointee::None)
             .map(|(symbol, _)| {
-                ProgramLinkError::SymbolNotDefined(
-                    symbol.clone(),
-                    origin
-                        .get(symbol)
-                        .expect("Symbol defined in a file")
-                        .clone(),
-                )
+                ProgramLinkError::SymbolNotDefined(symbol.clone(), origin.get(symbol).cloned())
             }),
     );
     let mut resolved = HashMap::new();
@@ -104,44 +106,46 @@ fn elf_to_program(
             }),
     );
     // add Pointee::Symbol
-    loop {
-        let mut resolved_sth = false;
-        resolved.extend(
-            symbols
-                .iter()
-                .filter(|(_, i)| matches!(i, Pointee::Symbol(_)))
-                .map(|(symbol, p)| {
-                    (
-                        symbol,
-                        match p {
-                            Pointee::Symbol(s) => s,
-                            _ => unreachable!(),
-                        },
-                    )
-                })
-                .filter(|(s, _)| !resolved.contains_key(*s))
-                .filter(|(_, s)| resolved.contains_key(*s))
-                .map(|(symbol, points)| {
-                    resolved_sth = true;
-                    (symbol.clone(), resolved[points])
-                })
-                .collect::<Vec<_>>()
-                .into_iter(),
-        );
+    if errors.is_empty() {
+        loop {
+            let mut resolved_sth = false;
+            resolved.extend(
+                symbols
+                    .iter()
+                    .filter(|(_, i)| matches!(i, Pointee::Symbol(_)))
+                    .map(|(symbol, p)| {
+                        (
+                            symbol,
+                            match p {
+                                Pointee::Symbol(s) => s,
+                                _ => unreachable!(),
+                            },
+                        )
+                    })
+                    .filter(|(s, _)| !resolved.contains_key(*s))
+                    .filter(|(_, s)| resolved.contains_key(*s))
+                    .map(|(symbol, points)| {
+                        resolved_sth = true;
+                        (symbol.clone(), resolved[points])
+                    })
+                    .collect::<Vec<_>>()
+                    .into_iter(),
+            );
 
-        if !resolved_sth {
-            break;
+            if !resolved_sth {
+                break;
+            }
         }
+        errors.extend(
+            symbols
+                .into_iter()
+                .filter(|(s, _)| !resolved.contains_key(s))
+                .map(|(s, _)| {
+                    let x = origin.get(&s).cloned();
+                    ProgramLinkError::SymbolNotDeclared(s, x)
+                }),
+        );
     }
-    errors.extend(
-        symbols
-            .into_iter()
-            .filter(|(s, _)| !resolved.contains_key(s))
-            .map(|(s, _)| {
-                let x = origin.get(&s).expect("Symbol defined in a file").clone();
-                ProgramLinkError::SymbolNotDeclared(s, x)
-            }),
-    );
     if errors.is_empty() {
         // Replace relocations
         for (sect, fileaddr, sym, memaddr) in relocations
@@ -165,7 +169,7 @@ fn elf_to_program(
             } else {
                 errors.push(ProgramLinkError::SymbolNotDefined(
                     sym.clone(),
-                    origin.get(sym).expect("Symbol defined in a file").clone(),
+                    origin.get(sym).cloned(),
                 ));
             }
         }
@@ -177,12 +181,46 @@ fn elf_to_program(
     }
 }
 
-pub fn link_to_program(files: Vec<(Elf, String)>) -> Result<Program, Vec<ProgramLinkError>> {
+pub fn link_to_program(files: Vec<(Elf, String)>) -> Result<Program, Vec<ElfError>> {
     let (elf, symbols) = link_to_elf_with_info(files)?;
-    elf_to_program(elf, symbols)
+    elf_to_program(elf, symbols).map_err(|s| s.into_iter().map(Into::into).collect())
 }
 
 #[cfg(test)]
 mod tests {
     // TODO write tests
+
+    use std::collections::HashMap;
+
+    use armes_elf::{Elf, Pointee};
+
+    use crate::{elf_to_program, error::ProgramLinkError};
+
+    #[test]
+    fn link_program_ok_test() {
+        let mut elf = Elf::new(vec![(0, vec![0, 0, 0, 0])]);
+        elf.define("memcpy".to_string(), Pointee::Address(0xffff));
+        elf.relocate(0, 2, "memcpy".to_string());
+        let mut origin: HashMap<String, String> = HashMap::new();
+        origin.insert("memcpy".to_string(), "src".to_string());
+        let p = elf_to_program(elf, origin);
+        assert_eq!(p, Ok(vec![(0, vec![0, 0, 0xff, 0xff])]))
+    }
+
+    #[test]
+    fn link_program_symbol_not_defined_test() {
+        let mut elf = Elf::new(vec![(0, vec![0, 0, 0, 0])]);
+        // elf.define("memcpy".to_string(), Pointee::Address(0xffff));
+        elf.relocate(0, 2, "memcpy".to_string());
+        let mut origin: HashMap<String, String> = HashMap::new();
+        origin.insert("memcpy".to_string(), "src".to_string());
+        let p = elf_to_program(elf, origin);
+        assert_eq!(
+            p,
+            Err(vec![ProgramLinkError::SymbolNotDefined(
+                "memcpy".to_string(),
+                Some("src".to_string())
+            )])
+        )
+    }
 }
