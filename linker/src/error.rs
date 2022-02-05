@@ -1,3 +1,4 @@
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgramLinkError {
     SymbolNotDefined(String, String),
     SymbolNotDeclared(String, String),

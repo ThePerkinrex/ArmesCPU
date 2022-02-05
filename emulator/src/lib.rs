@@ -53,7 +53,7 @@ impl Cpu {
         }
     }
 
-    pub fn load_program(&mut self, program: &[Ast], offset: u16) {
+    pub fn load_ast_program(&mut self, program: &[Ast], offset: u16) {
         self.load_bytes(
             program
                 .iter()

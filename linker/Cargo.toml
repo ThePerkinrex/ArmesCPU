@@ -7,5 +7,10 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-armes-elf = {path = "../armes-elf"}
-# asm-ir = {path = "../asm-ir"}
+armes-elf = {path = "../armes-elf", default-features=false}
+asm-ir = {path = "../asm-ir", optional = true}
+clap = { version = "3", features = ["derive"], optional=true }
+
+[features]
+cli = ["clap", "armes-elf/read", "armes-elf/write", "asm-ir"]
+default = ["cli"]

@@ -140,7 +140,7 @@ where
                                     Arg::ConstantAddr(ConstantAddr::Pointer),
                                     Arg::ConstantAddr(ConstantAddr::Symbol(s)),
                                 ) => {
-                                    let addr = res.bytecode_len();
+                                    let addr = dbg!(res.bytecode_len());
                                     relocations.push((addr + 2, s.to_string()));
                                     Ast::LoadPointer(0)
                                 }

@@ -157,8 +157,8 @@ impl From<Ast> for BytecodeInstr {
 impl Len for BytecodeInstr {
     fn len(&self) -> usize {
         match self {
-            Self::Single(_) => 1,
-            Self::Double(_, _) => 2,
+            Self::Single(_) => 2,
+            Self::Double(_, _) => 4,
         }
     }
 
@@ -169,10 +169,7 @@ impl Len for BytecodeInstr {
 
 impl Len for Ast {
     fn len(&self) -> usize {
-        match (*self).into() {
-            BytecodeInstr::Single(_) => 1,
-            BytecodeInstr::Double(_, _) => 2,
-        }
+        BytecodeInstr::from(*self).len()
     }
 
     fn is_empty(&self) -> bool {
@@ -312,13 +309,94 @@ impl<I: Iterator<Item = u8>> Iterator for AstExtendedIter<I> {
 }
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
-pub struct Program {
+pub struct AstProgram {
     pub segments: Vec<(u16, Vec<Ast>)>,
 }
 // Binary layout:
 // u8 numsegments
 // segment*: u16 filepos, u16 mempos
 // prog: u8*
+
+impl From<AstProgram> for Program {
+    fn from(p: AstProgram) -> Self {
+        Self {
+            segments: p
+                .segments
+                .into_iter()
+                .map(|(addr, a)| {
+                    (
+                        addr,
+                        a.into_iter()
+                            .flat_map(|x| BytecodeInstr::from(x).into_iter())
+                            .collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<Program> for AstProgram {
+    fn from(value: Program) -> Self {
+        Self {
+            segments: value
+                .segments
+                .into_iter()
+                .map(|(addr, p)| {
+                    (
+                        addr,
+                        p.chunks(2)
+                            .map(|c| c[0] as u16 | ((c.get(1).copied().unwrap_or(0) as u16) << 8))
+                            .rev()
+                            .scan(None, |a, b| {
+                                let r = (b, *a);
+                                *a = Some(b);
+                                Some(r)
+                            })
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .rev()
+                            // .enumerate()
+                            // .inspect(|(i, (a, b))| println!("{} : {:04x} {:?}", i, a, b))
+                            .scan(false, |skip, (curr, mut next)| {
+                                if *skip {
+                                    // println!("Skipping {}", i);
+                                    *skip = false;
+                                    Some(None)
+                                } else {
+                                    // println!("Parsing {}", i);
+                                    match Ast::parse(curr, &mut next) {
+                                        Ok(a) => {
+                                            *skip = next.is_none();
+                                            Some(Some(a))
+                                        }
+                                        Err(e) => panic!("Error parsing instructions: {:?}", e),
+                                    }
+                                }
+                            })
+                            .flatten()
+                            .collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+impl AstProgram {
+    pub fn write<W: Write>(self, buf: &mut W) -> std::io::Result<()> {
+        Program::from(self).write(buf)
+    }
+
+    pub fn parse(data: &[u8]) -> Self {
+        Program::parse(data).into()
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
+pub struct Program {
+    pub segments: Vec<(u16, Vec<u8>)>,
+}
 
 impl Program {
     pub fn new() -> Self {
@@ -328,16 +406,7 @@ impl Program {
         let segments = self
             .segments
             .into_iter()
-            .map(|(off, instrs)| {
-                (
-                    off,
-                    instrs
-                        .into_iter()
-                        // .inspect(|a| println!("{:?} {:?}", a, Into::<BytecodeInstr>::into(*a)))
-                        .flat_map(|x| Into::<BytecodeInstr>::into(x).into_iter())
-                        .collect::<Vec<u8>>(),
-                )
-            })
+            .map(|(off, instrs)| (off, instrs))
             .collect::<Vec<_>>();
         let mut header = Vec::<(u16, u16)>::with_capacity(segments.len());
         let mut p = 0;
@@ -374,38 +443,7 @@ impl Program {
                 &data[num_segments * 4..][filepos as usize..]
             };
             // let mut instr = Vec::new();
-            let instr = prog
-                .chunks(2)
-                .map(|c| c[0] as u16 | ((c.get(1).copied().unwrap_or(0) as u16) << 8))
-                .rev()
-                .scan(None, |a, b| {
-                    let r = (b, *a);
-                    *a = Some(b);
-                    Some(r)
-                })
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                // .enumerate()
-                // .inspect(|(i, (a, b))| println!("{} : {:04x} {:?}", i, a, b))
-                .scan(false, |skip, (curr, mut next)| {
-                    if *skip {
-                        // println!("Skipping {}", i);
-                        *skip = false;
-                        Some(None)
-                    } else {
-                        // println!("Parsing {}", i);
-                        match Ast::parse(curr, &mut next) {
-                            Ok(a) => {
-                                *skip = next.is_none();
-                                Some(Some(a))
-                            }
-                            Err(e) => panic!("Error parsing instructions: {:?}", e),
-                        }
-                    }
-                })
-                .flatten()
-                .collect();
+            let instr = prog.to_vec();
             // .for_each(|_| ());
             segments.push((mempos, instr));
         }
@@ -416,14 +454,14 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use crate::Ast;
+    use crate::AstProgram;
     use crate::BytecodeInstr;
     use crate::ParseError;
-    use crate::Program;
 
     #[test]
     fn program_write_read() {
         let mut b = Vec::new();
-        let p = Program {
+        let p = AstProgram {
             segments: vec![
                 (0, vec![Ast::JumpOffset(0, 0x1000), Ast::Nop]),
                 (
@@ -453,7 +491,7 @@ mod tests {
         println!("]");
 
         // println!("BUF: {:?}", b);
-        let new_p = Program::parse(&b);
+        let new_p = AstProgram::parse(&b);
         assert_eq!(p, new_p);
     }
 

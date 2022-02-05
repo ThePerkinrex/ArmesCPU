@@ -121,7 +121,7 @@ fn parse_tables(
     let (i, symtab) = parse_symtab(header.symn)(i)?;
     let (i, reltab) = parse_reltab(header.reln)(i)?;
     let (i, datatab) = parse_datatab(header.datan)(i)?;
-    Ok((i, dbg!(header, symtab, reltab, datatab)))
+    Ok((i, (header, symtab, reltab, datatab)))
 }
 
 fn parse_str<'a>(at: u32) -> impl FnMut(&'a [u8]) -> PResult<String> {

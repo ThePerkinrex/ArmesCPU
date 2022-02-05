@@ -1,3 +1,5 @@
+#![cfg(feature = "cli")]
+
 use assembler::{config::Config, parse};
 use clap::StructOpt;
 fn main() {

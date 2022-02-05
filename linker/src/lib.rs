@@ -15,15 +15,17 @@ fn link_to_elf_with_info(
     let mut errors = Vec::new();
     // Generate symbol information
     for (file, name) in &files {
-        for s in file.symbols().keys() {
-            if let Some(og) = info.get(s) {
-                errors.push(ProgramLinkError::DuplicateSymbol(
-                    s.clone(),
-                    og.clone(),
-                    name.clone(),
-                ))
-            } else {
-                info.insert(s.clone(), name.clone());
+        for (s, p) in file.symbols() {
+            if p != &Pointee::None {
+                if let Some(og) = info.get(s) {
+                    errors.push(ProgramLinkError::DuplicateSymbol(
+                        s.clone(),
+                        og.clone(),
+                        name.clone(),
+                    ))
+                } else {
+                    info.insert(s.clone(), name.clone());
+                }
             }
         }
     }
@@ -47,12 +49,16 @@ fn link_to_elf_with_info(
             for (segment, addr, symbol) in relocations {
                 fat_elf.relocate(segment + i as u16, addr, symbol);
             }
-
+            let old_addr = start_addr;
             if let Some((addr, bytes)) = segments.last() {
                 start_addr += *addr as usize + bytes.len();
             }
             i += segments.len();
-            data.extend(segments.into_iter());
+            data.extend(
+                segments
+                    .into_iter()
+                    .map(|(addr, s)| (old_addr as u16 + addr, s)),
+            );
         }
         fat_elf.data = data;
         Ok((fat_elf, info))
@@ -130,7 +136,7 @@ fn elf_to_program(
     errors.extend(
         symbols
             .into_iter()
-            .filter(|(s, _)| resolved.contains_key(s))
+            .filter(|(s, _)| !resolved.contains_key(s))
             .map(|(s, _)| {
                 let x = origin.get(&s).expect("Symbol defined in a file").clone();
                 ProgramLinkError::SymbolNotDeclared(s, x)
@@ -144,7 +150,7 @@ fn elf_to_program(
         {
             if let Some(memaddr) = memaddr {
                 if let Some((_, segment)) = data.get_mut(*sect as usize) {
-                    if let Some(x) = segment.get_mut(*fileaddr as usize..*fileaddr as usize + 4) {
+                    if let Some(x) = segment.get_mut(*fileaddr as usize..*fileaddr as usize + 2) {
                         x.copy_from_slice(&memaddr.to_le_bytes())
                     } else {
                         errors.push(ProgramLinkError::SegmentAddrNotFound(
