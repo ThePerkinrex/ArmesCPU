@@ -9,7 +9,7 @@ license = "MIT"
 [dependencies]
 armes-elf = {path = "../armes-elf", default-features=false}
 asm-ir = {path = "../asm-ir", optional = true}
-clap = { version = "3", features = ["derive"], optional=true }
+clap = { version = "3.0.13", features = ["derive"], optional=true }
 
 [features]
 cli = ["clap", "armes-elf/read", "armes-elf/write", "asm-ir"]

@@ -12,5 +12,5 @@ default = ["read", "write", "asm"]
 asm = ["asm-ir"]
 
 [dependencies]
-nom = {version = "7", optional = true}
+nom = {version = "7.1.0", optional = true}
 asm-ir = {path="../asm-ir", optional=true}

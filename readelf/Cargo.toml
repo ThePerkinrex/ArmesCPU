@@ -8,5 +8,5 @@ license = "MIT"
 
 [dependencies]
 armes-elf = {path = "../armes-elf", default-features=false, features=["read"]}
-clap = { version = "3", features = ["derive"] }
+clap = { version = "3.0.13", features = ["derive"] }
 

@@ -10,4 +10,4 @@ description = "An emulator for the ArmesCPU arquitecture"
 
 [dependencies]
 asm-ir = {path = "../asm-ir"}
-clap = { version = "3", features = ["derive"]}
+clap = { version = "3.0.13", features = ["derive"]}
