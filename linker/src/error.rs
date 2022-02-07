@@ -1,6 +1,7 @@
 use std::fmt::Display;
+use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ProgramLinkError {
     SymbolNotDefined(String, Option<String>),
     SymbolNotDeclared(String, Option<String>),
@@ -36,8 +37,9 @@ impl Display for ProgramLinkError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ElfError {
+    #[error(transparent)]
     ProgramLinkError(ProgramLinkError),
     /// Symbol, og file, dup file
     DuplicateSymbol(String, String, String),

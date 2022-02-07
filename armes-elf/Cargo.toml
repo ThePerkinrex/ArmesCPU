@@ -6,11 +6,12 @@ license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
-read = ["nom"]
+read = ["nom", "thiserror"]
 write = []
 default = ["read", "write", "asm"]
 asm = ["asm-ir"]
 
 [dependencies]
 nom = {version = "7.1.0", optional = true}
+thiserror = {version="1.0.30", optional = true}
 asm-ir = {path="../asm-ir", optional=true}

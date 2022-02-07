@@ -1,8 +1,12 @@
 use std::io::Write;
 
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Debug, Error)]
 pub enum ParseError {
+    #[error("Unknown instruction {0:X}")]
     UnknownInstruction(u16),
+    #[error("More data necessary {0:X}")]
     MoreDataNecessary(u16),
 }
 

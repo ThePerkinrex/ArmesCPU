@@ -8,6 +8,8 @@ use nom::{
     IResult, Parser,
 };
 
+use thiserror::Error;
+
 use crate::{Elf, Pointee};
 
 #[derive(Debug)]
@@ -130,9 +132,11 @@ fn parse_str<'a>(at: u32) -> impl FnMut(&'a [u8]) -> PResult<String> {
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ParseError<'a> {
+    #[error("Parsing error ({0})")]
     NomErr(nom::Err<nom::error::Error<&'a [u8]>>),
+    #[error("Symbol not found")]
     SymbolNotFound,
 }
 

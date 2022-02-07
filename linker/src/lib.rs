@@ -6,7 +6,7 @@ pub type Program = Vec<(u16, Vec<u8>)>;
 
 mod error;
 
-use error::{ElfError, ProgramLinkError};
+pub use error::{ElfError, ProgramLinkError};
 
 fn link_to_elf_with_info(
     files: Vec<(Elf, String)>,
