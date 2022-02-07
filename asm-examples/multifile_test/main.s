@@ -4,4 +4,4 @@ _start:
 	CALL print_hi
 	CALL print_hi
 loop:
-	JP _start
+	JP loop

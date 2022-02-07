@@ -13,6 +13,7 @@ nom = "7.1.0"
 nom_locate = "4.0.0"
 ariadne = "0.1.3"
 asm-ir = {path="../asm-ir"}
+thiserror = "1.0.30"
 armes-elf = {path="../armes-elf", default-features = false, features = ["write"]}
 linker = {path = "../linker", default-features = false}
 clap = { version = "3.0.13", features = ["derive"], optional=true }

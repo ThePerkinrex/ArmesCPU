@@ -8,6 +8,7 @@ license = "MIT"
 
 [dependencies]
 armes-elf = {path = "../armes-elf", default-features=false}
+thiserror = "1.0.30"
 asm-ir = {path = "../asm-ir", optional = true}
 clap = { version = "3.0.13", features = ["derive"], optional=true }
 
