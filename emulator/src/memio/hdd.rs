@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{Error, Read, Seek, SeekFrom, Write, self},
+    io::{self, Error, Read, Seek, SeekFrom, Write},
     // mem::size_of,
     path::Path,
 };
@@ -26,10 +26,10 @@ pub enum HddReadError {
 }
 
 impl Hdd {
-	pub fn build<P: AsRef<Path>>(path: P, size: u64) -> Result<(), io::Error>{
-		let mut f = File::create(path)?;
-		f.write_all(&size.to_le_bytes())
-	}
+    pub fn build<P: AsRef<Path>>(path: P, size: u64) -> Result<(), io::Error> {
+        let mut f = File::create(path)?;
+        f.write_all(&size.to_le_bytes())
+    }
 
     pub fn read<P: AsRef<Path>>(path: P) -> Result<Self, HddReadError> {
         let path = path.as_ref();
@@ -109,7 +109,7 @@ impl IoPort for Hdd {
             0..=7 => None,
             8..=15 => {
                 let i = u64::MAX ^ (0xff << ((idx - 8) * 8));
-                self.set_addr((self.addr & i)  + ((v as u64) << ((idx - 8) * 8)));
+                self.set_addr((self.addr & i) + ((v as u64) << ((idx - 8) * 8)));
                 Some(())
             }
             16 => {
