@@ -1,3 +1,4 @@
+pub mod hdd;
 pub mod serial;
 
 pub trait MemoryIO {
@@ -132,4 +133,5 @@ where
 pub enum IoKind {
     SerialTty,
     Keyboard,
+    HDD,
 }
