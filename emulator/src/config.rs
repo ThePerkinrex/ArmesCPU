@@ -8,4 +8,6 @@ pub struct Config {
     /// Input file
     // #[clap(short, long)]
     pub input: PathBuf,
+    #[clap(name = "disk", short, long, multiple_values = false)]
+    pub hdd: Vec<PathBuf>,
 }

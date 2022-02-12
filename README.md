@@ -9,3 +9,6 @@ It consists of 3 crates:
  * `assembler` contains the simple assembler
  * `linker` contains a linker for the ELF format
  * `emulator` contains the actual cpu emulator
+### Utilities
+ * `readelf` prints elf information and hexdumps
+ * `newdisk` creates disk files for the hdd component of the emulator
