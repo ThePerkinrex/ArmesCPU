@@ -8,11 +8,14 @@ use nom::{
     combinator::{all_consuming, cut, map, map_parser, map_res, recognize},
     multi::{many0, many1},
     sequence::{delimited, preceded, terminated},
+    Parser,
 };
 
 use crate::error::{context, Context};
 
-use super::{super::from_str_radix::FromStrRadix, identifier, tag, take_all, PResult, Span};
+use super::{
+    super::from_str_radix::FromStrRadix, identifier, tag, take_all, Choice, PResult, Span,
+};
 
 fn binary<N: FromStrRadix>(input: Span) -> PResult<N> {
     context(
@@ -56,12 +59,45 @@ fn decimal<N: FromStrRadix>(input: Span) -> PResult<N> {
     )(input)
 }
 
+const ESCAPED_CHARS: &[(&str, char)] = &[
+    ("\\\\", '\\'),
+    ("\\'", '\''),
+    ("\\n", '\n'),
+    ("\\t", '\t'),
+    ("\\r", '\r'),
+    ("\\0", '\0'),
+];
+
+fn char_literal(input: Span) -> PResult<char> {
+    let escaped_chars = Choice(
+        ESCAPED_CHARS
+            .iter()
+            .map::<Box<dyn Parser<_, _, _>>, _>(|(a, b)| {
+                Box::new(map(tag(a), |s: Span| s.map_extra(|_| *b)))
+            })
+            .chain(std::iter::once::<Box<dyn Parser<_, _, _>>>(Box::new(map(
+                recognize(take(1usize)),
+                |c: Span| c.map_extra(|_| c.fragment().chars().next().unwrap()),
+            )))),
+    );
+    context(
+        Context::Char,
+        delimited(char('\''), alt(escaped_chars), char('\'')),
+    )(input)
+}
+
 fn number<N: FromStrRadix>(n: Span) -> PResult<N> {
     alt((binary, hex, decimal))(n)
 }
 
 fn constant_byte(i: Span) -> PResult<u8> {
-    context(Context::Byte, preceded(char('$'), number))(i)
+    context(
+        Context::Byte,
+        alt((
+            preceded(char('$'), number),
+            map(char_literal, |c: Span<char>| c.map_extra(|c| c as u8)),
+        )),
+    )(i)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,8 +187,17 @@ mod tests {
     use crate::parser::tests::{assert_nom_err, assert_nom_failure, assert_nom_ok_extra};
 
     use super::{
-        addr, arg, constant_addr, constant_byte, number, register, Addr, Arg, ConstantAddr, Span,
+        addr, arg, char_literal, constant_addr, constant_byte, number, register, Addr, Arg,
+        ConstantAddr, Span,
     };
+
+    #[test]
+    fn parse_char() {
+        assert_nom_ok_extra(char_literal, Span::new("'c'"), "", 'c');
+        assert_nom_ok_extra(char_literal, Span::new("'\\n'"), "", '\n');
+        assert_nom_ok_extra(char_literal, Span::new("'\\\\'"), "", '\\');
+        assert_nom_err(char_literal, Span::new("'hadjs'"));
+    }
 
     #[test]
     fn parse_num() {
@@ -174,6 +219,8 @@ mod tests {
     fn parse_constant_byte() {
         assert_nom_ok_extra(constant_byte, Span::new("$10"), "", 10);
         assert_nom_ok_extra(constant_byte, Span::new("$0x10 hi"), " hi", 0x10);
+
+        assert_nom_ok_extra(constant_byte, Span::new("'A' hi"), " hi", b'A');
         assert_nom_err(constant_byte, Span::new("0b10"));
         assert_nom_err(constant_byte, Span::new("[0b10]"));
         // panic!()

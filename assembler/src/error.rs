@@ -283,6 +283,7 @@ pub enum Context {
     Hex,
     Bin,
     Dec,
+    Char,
 }
 
 impl<I> ErrorContext<I> for Error<I> {
