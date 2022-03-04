@@ -9,7 +9,7 @@ use std::{
 
 use ariadne::{Cache, Color, Label, Report};
 use armes_elf::{Elf, Pointee};
-use asm_ir::{Ast, BytecodeInstr, BytecodeLen};
+use asm_ir::{Ast, AstExtended, BytecodeLen};
 use cache::{CacheStr, FsCache};
 use error::error_as_reports;
 use parser::{lines, Addr, Arg, ConstantAddr, Span};
@@ -122,7 +122,7 @@ where
                 match *opcode.fragment() {
                     "NOP" => {
                         match expected_args_whole(id.clone(), &opcode, &args, &[&[]]) {
-                            Ok(_) => res.push(Ast::Nop),
+                            Ok(_) => res.push(AstExtended::Ast(Ast::Nop)),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -140,31 +140,35 @@ where
                                 &[ArgKind::Pointer, ArgKind::Register, ArgKind::ConstantAddr],
                             ],
                         ) {
-                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                                (0, Arg::Register(x), Arg::Byte(b)) => Ast::LoadByte(x, b),
-                                (1, Arg::Register(x), Arg::Register(y)) => Ast::LoadReg(x, y),
-                                (2, Arg::Addr(Addr::Pointer), Arg::Register(y)) => {
-                                    Ast::LoadFromRegs(y)
-                                }
-                                (3, Arg::Register(y), Arg::Addr(Addr::Pointer)) => {
-                                    Ast::LoadIntoRegs(y)
-                                }
-                                (
-                                    4,
-                                    Arg::ConstantAddr(ConstantAddr::Pointer),
-                                    Arg::ConstantAddr(ConstantAddr::Addr(x)),
-                                ) => Ast::LoadPointer(x),
-                                (
-                                    4,
-                                    Arg::ConstantAddr(ConstantAddr::Pointer),
-                                    Arg::ConstantAddr(ConstantAddr::Symbol(s)),
-                                ) => {
-                                    let addr = dbg!(res.bytecode_len());
-                                    relocations.push((addr + 2, s.to_string()));
-                                    Ast::LoadPointer(0)
-                                }
-                                (5, Arg::ConstantAddr(ConstantAddr::Pointer), Arg::Register(x)) => {
-                                    match args[2].extra {
+                            Ok(x) => res.push(
+                                match (x, args[0].extra, args[1].extra) {
+                                    (0, Arg::Register(x), Arg::Byte(b)) => Ast::LoadByte(x, b),
+                                    (1, Arg::Register(x), Arg::Register(y)) => Ast::LoadReg(x, y),
+                                    (2, Arg::Addr(Addr::Pointer), Arg::Register(y)) => {
+                                        Ast::LoadFromRegs(y)
+                                    }
+                                    (3, Arg::Register(y), Arg::Addr(Addr::Pointer)) => {
+                                        Ast::LoadIntoRegs(y)
+                                    }
+                                    (
+                                        4,
+                                        Arg::ConstantAddr(ConstantAddr::Pointer),
+                                        Arg::ConstantAddr(ConstantAddr::Addr(x)),
+                                    ) => Ast::LoadPointer(x),
+                                    (
+                                        4,
+                                        Arg::ConstantAddr(ConstantAddr::Pointer),
+                                        Arg::ConstantAddr(ConstantAddr::Symbol(s)),
+                                    ) => {
+                                        let addr = dbg!(res.bytecode_len());
+                                        relocations.push((addr + 2, s.to_string()));
+                                        Ast::LoadPointer(0)
+                                    }
+                                    (
+                                        5,
+                                        Arg::ConstantAddr(ConstantAddr::Pointer),
+                                        Arg::Register(x),
+                                    ) => match args[2].extra {
                                         Arg::ConstantAddr(ConstantAddr::Addr(y)) => {
                                             Ast::LoadPointerOffset(x, y)
                                         }
@@ -174,16 +178,17 @@ where
                                             Ast::LoadPointerOffset(x, 0)
                                         }
                                         _ => unreachable!(),
-                                    }
+                                    },
+                                    _ => unreachable!(),
                                 }
-                                _ => unreachable!(),
-                            }),
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
                     "RET" => {
                         match expected_args_whole(id.clone(), &opcode, &args, &[&[]]) {
-                            Ok(_) => res.push(Ast::Return),
+                            Ok(_) => res.push(Ast::Return.into()),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -198,8 +203,8 @@ where
                                 &[ArgKind::Pointer],
                             ],
                         ) {
-                            Ok(x) => {
-                                res.push(match (x, args[0].extra, args.get(1).map(|x| x.extra)) {
+                            Ok(x) => res.push(
+                                match (x, args[0].extra, args.get(1).map(|x| x.extra)) {
                                     (0, Arg::ConstantAddr(ConstantAddr::Addr(x)), None) => {
                                         Ast::Call(x)
                                     }
@@ -226,8 +231,9 @@ where
                                         Ast::CallPointer
                                     }
                                     _ => unreachable!(),
-                                })
-                            }
+                                }
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -242,8 +248,8 @@ where
                                 &[ArgKind::Pointer],
                             ],
                         ) {
-                            Ok(x) => {
-                                res.push(match (x, args[0].extra, args.get(1).map(|x| x.extra)) {
+                            Ok(x) => res.push(
+                                match (x, args[0].extra, args.get(1).map(|x| x.extra)) {
                                     (0, Arg::ConstantAddr(ConstantAddr::Addr(x)), None) => {
                                         Ast::Jump(x)
                                     }
@@ -270,8 +276,9 @@ where
                                         Ast::JumpPointer
                                     }
                                     _ => unreachable!(),
-                                })
-                            }
+                                }
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -286,14 +293,19 @@ where
                                 &[ArgKind::Pointer, ArgKind::Register],
                             ],
                         ) {
-                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                                (0, Arg::Register(x), Arg::Byte(b)) => Ast::AddByte(x, b),
-                                (1, Arg::Register(x), Arg::Register(y)) => Ast::AddReg(x, y),
-                                (2, Arg::ConstantAddr(ConstantAddr::Pointer), Arg::Register(y)) => {
-                                    Ast::AddToPointer(y)
+                            Ok(x) => res.push(
+                                match (x, args[0].extra, args[1].extra) {
+                                    (0, Arg::Register(x), Arg::Byte(b)) => Ast::AddByte(x, b),
+                                    (1, Arg::Register(x), Arg::Register(y)) => Ast::AddReg(x, y),
+                                    (
+                                        2,
+                                        Arg::ConstantAddr(ConstantAddr::Pointer),
+                                        Arg::Register(y),
+                                    ) => Ast::AddToPointer(y),
+                                    _ => unreachable!(),
                                 }
-                                _ => unreachable!(),
-                            }),
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -304,10 +316,13 @@ where
                             &args,
                             &[&[ArgKind::Register, ArgKind::Register]],
                         ) {
-                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                                (0, Arg::Register(x), Arg::Register(y)) => Ast::Sub(x, y),
-                                _ => unreachable!(),
-                            }),
+                            Ok(x) => res.push(
+                                match (x, args[0].extra, args[1].extra) {
+                                    (0, Arg::Register(x), Arg::Register(y)) => Ast::Sub(x, y),
+                                    _ => unreachable!(),
+                                }
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -318,10 +333,13 @@ where
                             &args,
                             &[&[ArgKind::Register, ArgKind::Register]],
                         ) {
-                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                                (0, Arg::Register(x), Arg::Register(y)) => Ast::SubNeg(x, y),
-                                _ => unreachable!(),
-                            }),
+                            Ok(x) => res.push(
+                                match (x, args[0].extra, args[1].extra) {
+                                    (0, Arg::Register(x), Arg::Register(y)) => Ast::SubNeg(x, y),
+                                    _ => unreachable!(),
+                                }
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -332,10 +350,13 @@ where
                             &args,
                             &[&[ArgKind::Register, ArgKind::Register]],
                         ) {
-                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                                (0, Arg::Register(x), Arg::Register(y)) => Ast::Or(x, y),
-                                _ => unreachable!(),
-                            }),
+                            Ok(x) => res.push(
+                                match (x, args[0].extra, args[1].extra) {
+                                    (0, Arg::Register(x), Arg::Register(y)) => Ast::Or(x, y),
+                                    _ => unreachable!(),
+                                }
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -346,10 +367,13 @@ where
                             &args,
                             &[&[ArgKind::Register, ArgKind::Register]],
                         ) {
-                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                                (0, Arg::Register(x), Arg::Register(y)) => Ast::Xor(x, y),
-                                _ => unreachable!(),
-                            }),
+                            Ok(x) => res.push(
+                                match (x, args[0].extra, args[1].extra) {
+                                    (0, Arg::Register(x), Arg::Register(y)) => Ast::Xor(x, y),
+                                    _ => unreachable!(),
+                                }
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -360,10 +384,13 @@ where
                             &args,
                             &[&[ArgKind::Register, ArgKind::Register]],
                         ) {
-                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                                (0, Arg::Register(x), Arg::Register(y)) => Ast::And(x, y),
-                                _ => unreachable!(),
-                            }),
+                            Ok(x) => res.push(
+                                match (x, args[0].extra, args[1].extra) {
+                                    (0, Arg::Register(x), Arg::Register(y)) => Ast::And(x, y),
+                                    _ => unreachable!(),
+                                }
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -377,11 +404,14 @@ where
                                 &[ArgKind::Register, ArgKind::Register],
                             ],
                         ) {
-                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                                (0, Arg::Register(x), Arg::Byte(b)) => Ast::SkipEqByte(x, b),
-                                (1, Arg::Register(x), Arg::Register(y)) => Ast::SkipEqReg(x, y),
-                                _ => unreachable!(),
-                            }),
+                            Ok(x) => res.push(
+                                match (x, args[0].extra, args[1].extra) {
+                                    (0, Arg::Register(x), Arg::Byte(b)) => Ast::SkipEqByte(x, b),
+                                    (1, Arg::Register(x), Arg::Register(y)) => Ast::SkipEqReg(x, y),
+                                    _ => unreachable!(),
+                                }
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -395,11 +425,16 @@ where
                                 &[ArgKind::Register, ArgKind::Register],
                             ],
                         ) {
-                            Ok(x) => res.push(match (x, args[0].extra, args[1].extra) {
-                                (0, Arg::Register(x), Arg::Byte(b)) => Ast::SkipNotEqByte(x, b),
-                                (1, Arg::Register(x), Arg::Register(y)) => Ast::SkipNotEqReg(x, y),
-                                _ => unreachable!(),
-                            }),
+                            Ok(x) => res.push(
+                                match (x, args[0].extra, args[1].extra) {
+                                    (0, Arg::Register(x), Arg::Byte(b)) => Ast::SkipNotEqByte(x, b),
+                                    (1, Arg::Register(x), Arg::Register(y)) => {
+                                        Ast::SkipNotEqReg(x, y)
+                                    }
+                                    _ => unreachable!(),
+                                }
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -410,10 +445,13 @@ where
                             &args,
                             &[&[ArgKind::Register]],
                         ) {
-                            Ok(x) => res.push(match (x, args[0].extra) {
-                                (0, Arg::Register(x)) => Ast::ShiftRight(x),
-                                _ => unreachable!(),
-                            }),
+                            Ok(x) => res.push(
+                                match (x, args[0].extra) {
+                                    (0, Arg::Register(x)) => Ast::ShiftRight(x),
+                                    _ => unreachable!(),
+                                }
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -424,10 +462,13 @@ where
                             &args,
                             &[&[ArgKind::Register]],
                         ) {
-                            Ok(x) => res.push(match (x, args[0].extra) {
-                                (0, Arg::Register(x)) => Ast::ShiftLeft(x),
-                                _ => unreachable!(),
-                            }),
+                            Ok(x) => res.push(
+                                match (x, args[0].extra) {
+                                    (0, Arg::Register(x)) => Ast::ShiftLeft(x),
+                                    _ => unreachable!(),
+                                }
+                                .into(),
+                            ),
                             Err(e) => reports.extend(e),
                         };
                     }
@@ -443,6 +484,9 @@ where
                 ));
                 // todo!("Symbol management code not written (Label: {})", label)
             }
+            Line::Db(db) => {
+                res.push(AstExtended::Data(db));
+            }
         }
     }
     println!("{} reports", reports.len());
@@ -451,9 +495,7 @@ where
     }
     let mut elf = Elf::new(vec![(
         0,
-        res.into_iter()
-            .flat_map(|x| BytecodeInstr::from(x).into_iter())
-            .collect(),
+        res.into_iter().flat_map(|x| x.into_iter()).collect(),
     )]); // FIXME for now only one segment is used
     for (reladdr, relsym) in relocations {
         elf.relocate(0, reladdr as u16, relsym)

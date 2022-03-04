@@ -13,11 +13,22 @@ use nom_locate::LocatedSpan;
 
 use crate::error::{context, BaseErrorKind, Context, Error, Expectation};
 
-use self::arg::arg;
+use self::{arg::arg, db_directive::Db};
 
 mod arg;
+mod db_directive;
 
 pub use arg::{Addr, Arg, ConstantAddr};
+
+const ESCAPED_CHARS: &[(&str, char)] = &[
+    ("\\\\", '\\'),
+    ("\\'", '\''),
+    ("\\n", '\n'),
+    ("\\t", '\t'),
+    ("\\r", '\r'),
+    ("\\0", '\0'),
+    ("\\\"", '\"'),
+];
 
 pub fn take_all<Input, Error: ParseError<Input>>(i: Input) -> IResult<Input, Input, Error>
 where
@@ -34,15 +45,58 @@ pub type Instr<'a> = (Span<'a>, Vec<Span<'a, Arg<'a>>>);
 pub enum Line<'a> {
     Instr(Instr<'a>),
     Label(Span<'a>),
+    Db(Db<'a>),
 }
 
-struct Choice<I: Iterator>(I);
-impl<I: Clone, O, E: ParseError<I>, T: Parser<I, O, E>, Iter: Iterator<Item = T>>
-    nom::branch::Alt<I, O, E> for Choice<Iter>
+struct Choice<T> {
+    data: Vec<T>,
+}
+
+impl<T> Choice<T> {
+    pub fn new_with_iter<I: Iterator<Item = T>>(i: I) -> Self {
+        Self::new(i.collect())
+    }
+
+    pub fn new_slice(s: &[T]) -> Self
+    where
+        T: Clone,
+    {
+        Self::new(s.to_vec())
+    }
+
+    pub fn new(data: Vec<T>) -> Self {
+        Self { data }
+    }
+}
+
+impl<I: Clone, O, E: ParseError<I>, T: Parser<I, O, E>> nom::branch::Alt<I, O, E> for Choice<T> {
+    fn choice(&mut self, input: I) -> IResult<I, O, E> {
+        let mut err = None;
+        for mut p in &mut self.data {
+            match p.parse(input.clone()) {
+                Err(nom::Err::Error(e)) => {
+                    if err.is_none() {
+                        err = Some(e)
+                    } else {
+                        err = err.map(|err| err.or(e))
+                    }
+                }
+                r => return r,
+            }
+        }
+        assert!(err.is_some(), "Empty iterator cannot opt for a choice");
+        Err(nom::Err::Error(err.unwrap()))
+    }
+}
+
+struct ChoiceIter<I: Iterator + Clone>(I);
+
+impl<I: Clone, O, E: ParseError<I>, T: Parser<I, O, E>, Iter: Iterator<Item = T> + Clone>
+    nom::branch::Alt<I, O, E> for ChoiceIter<Iter>
 {
     fn choice(&mut self, input: I) -> IResult<I, O, E> {
         let mut err = None;
-        for mut p in &mut self.0 {
+        for mut p in &mut self.0.clone() {
             match p.parse(input.clone()) {
                 Err(nom::Err::Error(e)) => {
                     if err.is_none() {
@@ -97,7 +151,7 @@ pub fn instr(i: Span) -> PResult<Instr> {
                     identifier,
                     cut(context(
                         Context::Opcode,
-                        alt(Choice(OPCODES.iter().map(|x: &&'static str| tag(*x)))),
+                        alt(ChoiceIter(OPCODES.iter().map(|x: &&'static str| tag(*x)))),
                     )),
                 ),
                 alt((space1, success(Span::new("")))),

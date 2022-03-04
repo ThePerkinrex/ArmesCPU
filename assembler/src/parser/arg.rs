@@ -15,6 +15,7 @@ use crate::error::{context, Context};
 
 use super::{
     super::from_str_radix::FromStrRadix, identifier, tag, take_all, Choice, PResult, Span,
+    ESCAPED_CHARS,
 };
 
 fn binary<N: FromStrRadix>(input: Span) -> PResult<N> {
@@ -59,17 +60,8 @@ fn decimal<N: FromStrRadix>(input: Span) -> PResult<N> {
     )(input)
 }
 
-const ESCAPED_CHARS: &[(&str, char)] = &[
-    ("\\\\", '\\'),
-    ("\\'", '\''),
-    ("\\n", '\n'),
-    ("\\t", '\t'),
-    ("\\r", '\r'),
-    ("\\0", '\0'),
-];
-
 fn char_literal(input: Span) -> PResult<char> {
-    let escaped_chars = Choice(
+    let escaped_chars = Choice::new_with_iter(
         ESCAPED_CHARS
             .iter()
             .map::<Box<dyn Parser<_, _, _>>, _>(|(a, b)| {
