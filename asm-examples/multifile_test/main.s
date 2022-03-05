@@ -5,3 +5,5 @@ _start:
 	CALL print_hi
 loop:
 	JP _start
+msg:
+	db "Hello, world!",0

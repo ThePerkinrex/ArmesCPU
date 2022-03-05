@@ -57,12 +57,12 @@ impl<T> Choice<T> {
         Self::new(i.collect())
     }
 
-    pub fn new_slice(s: &[T]) -> Self
-    where
-        T: Clone,
-    {
-        Self::new(s.to_vec())
-    }
+    // pub fn new_slice(s: &[T]) -> Self
+    // where
+    //     T: Clone,
+    // {
+    //     Self::new(s.to_vec())
+    // }
 
     pub fn new(data: Vec<T>) -> Self {
         Self { data }
@@ -72,7 +72,7 @@ impl<T> Choice<T> {
 impl<I: Clone, O, E: ParseError<I>, T: Parser<I, O, E>> nom::branch::Alt<I, O, E> for Choice<T> {
     fn choice(&mut self, input: I) -> IResult<I, O, E> {
         let mut err = None;
-        for mut p in &mut self.data {
+        for p in &mut self.data {
             match p.parse(input.clone()) {
                 Err(nom::Err::Error(e)) => {
                     if err.is_none() {
@@ -200,6 +200,9 @@ pub fn line(i: Span) -> IResult<Span, Option<Span<Line>>, Error<Span>> {
             map(tuple((space0, comment)), |_| None),
             map(preceded(space0, label), |l| {
                 Some(l.map_extra(|_| Line::Label(l)))
+            }),
+            map(preceded(space0, db_directive::db_directive), |x| {
+                Some(x.map_extra(Line::Db))
             }),
             map(
                 tuple((space0, opt(instr), opt(pair(space0, comment)))),

@@ -60,7 +60,7 @@ fn decimal<N: FromStrRadix>(input: Span) -> PResult<N> {
     )(input)
 }
 
-fn char_literal(input: Span) -> PResult<char> {
+pub(super) fn char_literal(input: Span) -> PResult<char> {
     let escaped_chars = Choice::new_with_iter(
         ESCAPED_CHARS
             .iter()
@@ -78,7 +78,7 @@ fn char_literal(input: Span) -> PResult<char> {
     )(input)
 }
 
-fn number<N: FromStrRadix>(n: Span) -> PResult<N> {
+pub(super) fn number<N: FromStrRadix>(n: Span) -> PResult<N> {
     alt((binary, hex, decimal))(n)
 }
 

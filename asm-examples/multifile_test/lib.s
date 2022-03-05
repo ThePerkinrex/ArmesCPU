@@ -7,3 +7,6 @@ print_hi:
 	LD V0, $10 ; newline
 	LD [I], V0
 	RET
+
+print:
+	RET
