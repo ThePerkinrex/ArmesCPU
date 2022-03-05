@@ -52,10 +52,16 @@ fn main() {
     //     ],
     //     0x2000,
     // ); // prints fib
+
     loop {
         // TODO add halt io port
         // let t = std::time::Instant::now();
+        let old = cpu.get_program_counter();
         cpu.cycle();
+        if old == cpu.get_program_counter() {
+            println!("Infinite loop");
+            break;
+        }
         // println!("> {:?}", t.elapsed());
         // println!("{:?}", cpu);
     }

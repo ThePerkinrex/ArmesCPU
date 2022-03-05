@@ -13,6 +13,7 @@ pub enum ParseError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ast {
     Nop,
+    NextAddr,
     Return,
     // System(u16),
     Jump(u16),
@@ -29,6 +30,8 @@ pub enum Ast {
     LoadReg(u8, u8),
     LoadPointer(u16),
     LoadPointerOffset(u8, u16),
+    LoadPointerIntoRegs(u8, u8),
+    LoadPointerFromRegs(u8, u8),
     // LoadFromDT(u8),
     // LoadKeyboard(u8),
     // LoadIntoDT(u8),
@@ -64,7 +67,8 @@ impl Ast {
         use Ast::*;
         match (instr, x, y, n) {
             (0x0, 0, 0, 0) => Ok(Nop),        // NOP
-            (0x0, 0, 0xE, 0xE) => Ok(Return), //RET
+            (0x0, 0, 0, 1) => Ok(NextAddr),   // NXT
+            (0x0, 0, 0xE, 0xE) => Ok(Return), // RET
             (0x1, 0, 0, 0) => next
                 .take()
                 .map(Jump)
@@ -106,6 +110,8 @@ impl Ast {
             (0x8, _, 0, 6) => Ok(ShiftRight(x)), // SHR Vx
             (0x8, _, 1, 6) => Ok(ShiftLeft(x)), // SHL Vx
             (0x8, _, _, 7) => Ok(SubNeg(x, y)), // SUBN Vx, Vy
+            (0x8, _, _, 8) => Ok(LoadPointerIntoRegs(x, y)), // LD Vx, Vy, I
+            (0x8, _, _, 9) => Ok(LoadPointerFromRegs(x, y)), // LD I, Vx, Vy
             (0xF, _, 0x1, 0xE) => Ok(AddToPointer(x)), // ADD I, Vx
             // (0xF, _, 0x3, 0x3) => Ok(LoadDigits(x)), // LD B, Vx
             (0xF, _, 0x5, 0x5) => Ok(LoadFromRegs(x)), // LD [I], Vx
@@ -126,6 +132,7 @@ impl From<Ast> for BytecodeInstr {
         use BytecodeInstr::*;
         match val {
             Ast::Nop => Single(0x0000),
+            Ast::NextAddr => Single(0x0001),
             Ast::Return => Single(0x00EE),
             Ast::Jump(addr) => Double(0x1000, addr),
             Ast::JumpOffset(x, addr) => Double(0x1010 | ((x as u16) << 8), addr),
@@ -144,6 +151,12 @@ impl From<Ast> for BytecodeInstr {
             // Ast::LoadDigits(x) => Single(0xF033 | ((x as u16) << 8)),
             Ast::LoadIntoRegs(x) => Single(0xF065 | ((x as u16) << 8)),
             Ast::LoadFromRegs(x) => Single(0xF055 | ((x as u16) << 8)),
+            Ast::LoadPointerIntoRegs(x, y) => {
+                Single(0x8008 | ((x as u16) << 8) | ((y as u16) << 4))
+            }
+            Ast::LoadPointerFromRegs(x, y) => {
+                Single(0x8009 | ((x as u16) << 8) | ((y as u16) << 4))
+            }
             Ast::AddByte(x, kk) => Single(0x7000 | ((x as u16) << 8) | kk as u16),
             Ast::AddReg(x, y) => Single(0x8004 | ((x as u16) << 8) | ((y as u16) << 4)),
             Ast::AddToPointer(x) => Single(0xF01E | ((x as u16) << 8)),

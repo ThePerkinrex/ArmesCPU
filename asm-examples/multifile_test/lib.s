@@ -9,4 +9,14 @@ print_hi:
 	RET
 
 print:
+	LD V1, V2, I
+	LD V0, [I]
+	SNE V0, $0
+	JP print1
+	LD I, #0xF002
+	LD [I], V0
+	LD I, V1, V2
+	NXT
+	JP print
+print1:
 	RET

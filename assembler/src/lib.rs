@@ -126,6 +126,12 @@ where
                             Err(e) => reports.extend(e),
                         };
                     }
+                    "NXT" => {
+                        match expected_args_whole(id.clone(), &opcode, &args, &[&[]]) {
+                            Ok(_) => res.push(AstExtended::Ast(Ast::NextAddr)),
+                            Err(e) => reports.extend(e),
+                        };
+                    }
                     "LD" => {
                         match expected_args_whole(
                             id.clone(),
@@ -133,17 +139,19 @@ where
                             &args,
                             &[
                                 &[ArgKind::Register, ArgKind::Byte],
-                                &[ArgKind::Register, ArgKind::Register],
+                                &[ArgKind::Register, ArgKind::Register, ArgKind::Pointer],
                                 &[ArgKind::AddrPointer, ArgKind::Register],
                                 &[ArgKind::Register, ArgKind::AddrPointer],
                                 &[ArgKind::Pointer, ArgKind::ConstantAddr],
                                 &[ArgKind::Pointer, ArgKind::Register, ArgKind::ConstantAddr],
+                                &[ArgKind::Register, ArgKind::Register],
+                                &[ArgKind::Pointer, ArgKind::Register, ArgKind::Register],
                             ],
                         ) {
                             Ok(x) => res.push(
                                 match (x, args[0].extra, args[1].extra) {
                                     (0, Arg::Register(x), Arg::Byte(b)) => Ast::LoadByte(x, b),
-                                    (1, Arg::Register(x), Arg::Register(y)) => Ast::LoadReg(x, y),
+                                    (6, Arg::Register(x), Arg::Register(y)) => Ast::LoadReg(x, y),
                                     (2, Arg::Addr(Addr::Pointer), Arg::Register(y)) => {
                                         Ast::LoadFromRegs(y)
                                     }
@@ -177,6 +185,22 @@ where
                                             relocations.push((addr + 2, s.to_string()));
                                             Ast::LoadPointerOffset(x, 0)
                                         }
+                                        _ => unreachable!(),
+                                    },
+                                    (1, Arg::Register(x), Arg::Register(y)) => {
+                                        match args[2].extra {
+                                            Arg::ConstantAddr(ConstantAddr::Pointer) => {
+                                                Ast::LoadPointerIntoRegs(x, y)
+                                            }
+                                            _ => unreachable!(),
+                                        }
+                                    }
+                                    (
+                                        7,
+                                        Arg::ConstantAddr(ConstantAddr::Pointer),
+                                        Arg::Register(x),
+                                    ) => match args[2].extra {
+                                        Arg::Register(y) => Ast::LoadPointerFromRegs(x, y),
                                         _ => unreachable!(),
                                     },
                                     _ => unreachable!(),

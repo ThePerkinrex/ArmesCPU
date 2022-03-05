@@ -114,8 +114,8 @@ impl<I: Clone, O, E: ParseError<I>, T: Parser<I, O, E>, Iter: Iterator<Item = T>
 }
 
 pub const OPCODES: &[&str] = &[
-    "NOP", "LD", "RET", "CALL", "JP", "ADD", "SUB", "SUBN", "AND", "OR", "XOR", "SE", "SNE", "SHR",
-    "SHL",
+    "NOP", "NXT", "LD", "RET", "CALL", "JP", "ADD", "SUB", "SUBN", "AND", "OR", "XOR", "SE", "SNE",
+    "SHR", "SHL",
 ];
 
 pub fn tag<Input>(tag: &'static str) -> impl Fn(Input) -> IResult<Input, Input, Error<Input>>

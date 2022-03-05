@@ -62,6 +62,10 @@ impl Cpu {
         )
     }
 
+    pub fn get_program_counter(&self) -> u16 {
+        self.program_counter
+    }
+
     pub fn cycle(&mut self) {
         let mut next = Some(
             self.memory.get(self.program_counter + 2).unwrap() as u16
@@ -79,12 +83,19 @@ impl Cpu {
             Err(asm_ir::ParseError::MoreDataNecessary(_)) => unreachable!(),
         };
         self.program_counter += if next.is_some() { 2 } else { 4 };
+        // println!("{:?}", instr);
+        // println!("I = {:X} V0 = {:X} V1 = {:X} V2 = {:X} V3 = {:X} V4 = {:X} V5 = {:X} V6 = {:X} V7 = {:X} V8 = {:X} V9 = {:X} VA = {:X} VB = {:X} VC = {:X} VD = {:X} VE = {:X} VF = {:X}", self.pointer, self.registers[0], self.registers[1], self.registers[2], self.registers[3], self.registers[4], self.registers[5], self.registers[6], self.registers[7], self.registers[8], self.registers[9], self.registers[10], self.registers[11], self.registers[12], self.registers[13], self.registers[14], self.registers[15]);
         if self.skip {
             self.skip = false;
         } else {
             match instr {
                 Ast::Nop => (),
                 Ast::Return => self.program_counter = self.stack.pop().unwrap(),
+                Ast::NextAddr => {
+                    // println!("Before add: {:X}", self.pointer);
+                    self.pointer = self.pointer.wrapping_add(1);
+                    // println!("NXT -> [0x{:X}] = {:?}", self.pointer, self.memory.get(self.pointer).map(|x| x as char))
+                }
                 Ast::Jump(addr) => self.program_counter = addr,
                 Ast::JumpOffset(x, addr) => {
                     self.program_counter = addr + self.registers[x as usize] as u16
@@ -133,6 +144,17 @@ impl Cpu {
                         self.memory
                             .set(self.pointer + i as u16, self.registers[i as usize]);
                     }
+                }
+                Ast::LoadPointerIntoRegs(x, y) => {
+                    self.registers[x as usize] = (self.pointer & 0xff) as u8;
+                    self.registers[y as usize] = (self.pointer >> 8) as u8;
+                    // println!("Loaded I into regs V{x} & V{y}: I = {:X}, V{x} = {:X}, V{y} = {:X}", self.pointer, self.registers[x as usize], self.registers[y as usize]);
+                }
+
+                Ast::LoadPointerFromRegs(x, y) => {
+                    self.pointer = self.registers[x as usize] as u16
+                        + ((self.registers[y as usize] as u16) << 8);
+                    // println!("Loaded I from regs V{x} & V{y}: I = {:X}, V{x} = {:X}, V{y} = {:X}", self.pointer, self.registers[x as usize], self.registers[y as usize]);
                 }
                 Ast::AddByte(x, kk) => {
                     let (r, overflowed) = self.registers[x as usize].overflowing_add(kk);
