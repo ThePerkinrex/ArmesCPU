@@ -16,5 +16,5 @@ multifile_test/linked.o: multifile_test/main.elf multifile_test/lib.elf
 
 build_multifile: multifile_test/linked.o multifile_test/linked.elf
 run_multifile: multifile_test/linked.o
-	$(EMULATOR) multifile_test/linke.o
+	$(EMULATOR) multifile_test/linked.o
 
