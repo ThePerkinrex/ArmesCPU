@@ -67,6 +67,10 @@ impl Cpu {
     }
 
     pub fn cycle(&mut self) {
+        self.cycle_verbosity(false)
+    }
+
+    pub fn cycle_verbosity(&mut self, verbose: bool) {
         let mut next = Some(
             self.memory.get(self.program_counter + 2).unwrap() as u16
                 | ((self.memory.get(self.program_counter + 3).unwrap() as u16) << 8),
@@ -82,10 +86,16 @@ impl Cpu {
             }
             Err(asm_ir::ParseError::MoreDataNecessary(_)) => unreachable!(),
         };
+        if verbose {
+            println!();
+            println!("{:?}", instr);
+            println!("PC = {:X} I = {:X} V0 = {:X} V1 = {:X} V2 = {:X} V3 = {:X} V4 = {:X} V5 = {:X} V6 = {:X} V7 = {:X} V8 = {:X} V9 = {:X} VA = {:X} VB = {:X} VC = {:X} VD = {:X} VE = {:X} VF = {:X}", self.program_counter, self.pointer, self.registers[0], self.registers[1], self.registers[2], self.registers[3], self.registers[4], self.registers[5], self.registers[6], self.registers[7], self.registers[8], self.registers[9], self.registers[10], self.registers[11], self.registers[12], self.registers[13], self.registers[14], self.registers[15]);
+        }
         self.program_counter += if next.is_some() { 2 } else { 4 };
-        // println!("{:?}", instr);
-        // println!("I = {:X} V0 = {:X} V1 = {:X} V2 = {:X} V3 = {:X} V4 = {:X} V5 = {:X} V6 = {:X} V7 = {:X} V8 = {:X} V9 = {:X} VA = {:X} VB = {:X} VC = {:X} VD = {:X} VE = {:X} VF = {:X}", self.pointer, self.registers[0], self.registers[1], self.registers[2], self.registers[3], self.registers[4], self.registers[5], self.registers[6], self.registers[7], self.registers[8], self.registers[9], self.registers[10], self.registers[11], self.registers[12], self.registers[13], self.registers[14], self.registers[15]);
         if self.skip {
+            if verbose {
+                println!("   SKIPPING");
+            }
             self.skip = false;
         } else {
             match instr {

@@ -57,9 +57,9 @@ fn main() {
         // TODO add halt io port
         // let t = std::time::Instant::now();
         let old = cpu.get_program_counter();
-        cpu.cycle();
+        cpu.cycle_verbosity(c.verbose);
         if old == cpu.get_program_counter() {
-            println!("Infinite loop");
+            println!("\nReached infinite loop");
             break;
         }
         // println!("> {:?}", t.elapsed());
