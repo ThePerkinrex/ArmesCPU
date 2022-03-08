@@ -59,6 +59,6 @@ impl Display for ElfError {
 
 impl From<ProgramLinkError> for ElfError {
     fn from(e: ProgramLinkError) -> Self {
-        ElfError::ProgramLinkError(e)
+        Self::ProgramLinkError(e)
     }
 }

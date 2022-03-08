@@ -17,15 +17,12 @@ fn link_to_elf_with_info(
     for (file, name) in &files {
         for (s, p) in file.symbols() {
             if p != &Pointee::None {
-                if let Some(og) = info.get(s) {
-                    errors.push(ElfError::DuplicateSymbol(
-                        s.clone(),
-                        og.clone(),
-                        name.clone(),
-                    ))
-                } else {
-                    info.insert(s.clone(), name.clone());
-                }
+                info.get(s).cloned().map_or_else(
+                    || {
+                        info.insert(s.clone(), name.clone());
+                    },
+                    |og| errors.push(ElfError::DuplicateSymbol(s.clone(), og, name.clone())),
+                )
             }
         }
     }
@@ -154,15 +151,18 @@ fn elf_to_program(
         {
             if let Some(memaddr) = memaddr {
                 if let Some((_, segment)) = data.get_mut(*sect as usize) {
-                    if let Some(x) = segment.get_mut(*fileaddr as usize..*fileaddr as usize + 2) {
-                        x.copy_from_slice(&memaddr.to_le_bytes())
-                    } else {
-                        errors.push(ProgramLinkError::SegmentAddrNotFound(
-                            sym.clone(),
-                            *sect,
-                            *fileaddr,
-                        ))
-                    }
+                    segment
+                        .get_mut(*fileaddr as usize..*fileaddr as usize + 2)
+                        .map_or_else(
+                            || {
+                                errors.push(ProgramLinkError::SegmentAddrNotFound(
+                                    sym.clone(),
+                                    *sect,
+                                    *fileaddr,
+                                ))
+                            },
+                            |x| x.copy_from_slice(&memaddr.to_le_bytes()),
+                        )
                 } else {
                     errors.push(ProgramLinkError::SegmentNotFound(sym.clone(), *sect))
                 }

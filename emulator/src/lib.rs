@@ -62,7 +62,7 @@ impl Cpu {
         )
     }
 
-    pub fn get_program_counter(&self) -> u16 {
+    pub const fn get_program_counter(&self) -> u16 {
         self.program_counter
     }
 

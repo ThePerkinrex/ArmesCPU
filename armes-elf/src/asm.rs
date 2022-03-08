@@ -98,7 +98,7 @@ impl<I: IntoIterator<Item = u8> + Len> From<AsmElf<I>> for Elf {
                 })
             })
             .collect();
-        let mut elf = Elf::new(data);
+        let mut elf = Self::new(data);
 
         for (name, s) in a.symbols.into_iter() {
             elf.define(

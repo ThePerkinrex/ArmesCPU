@@ -5,5 +5,9 @@ use clap::StructOpt;
 fn main() {
     let c = Config::parse();
 
-    parse(&c.input, c.out)
+    // #[cfg(not(feature = "dwarf"))]
+    // parse(&c.input, c.out, None);
+
+    // #[cfg(feature = "dwarf")]
+    parse(&c.input, c.out, c.dwarf_file);
 }

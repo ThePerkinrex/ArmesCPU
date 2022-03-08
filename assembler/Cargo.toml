@@ -17,10 +17,9 @@ thiserror = "1.0.30"
 armes-elf = {path="../armes-elf", default-features = false, features = ["write"]}
 linker = {path = "../linker", default-features = false}
 clap = { version = "3.0.13", features = ["derive"], optional=true }
-gimli = {version = "0.26.1", optional = true, default-features=false, features = ["std", "write"]}
+gimli = {version = "0.26.1", default-features=false, features = ["std", "write"]}
 
 
 [features]
 cli = ["clap"]
-dwarf = ["gimli"]
-default = ["cli", "dwarf"]
+default = ["cli"]

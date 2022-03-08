@@ -69,11 +69,12 @@ impl Elf {
         &self.relocations
     }
 
-    pub fn symbols(&self) -> &HashMap<String, Pointee> {
+    pub const fn symbols(&self) -> &HashMap<String, Pointee> {
         &self.symbols
     }
 
     #[allow(clippy::type_complexity)]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn into_inner(
         self,
     ) -> (

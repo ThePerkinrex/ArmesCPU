@@ -13,11 +13,11 @@ pub struct FromStrRadixError {
 impl std::error::Error for FromStrRadixError {}
 
 impl FromStrRadixError {
-    pub fn name(&self) -> &'static str {
+    pub const fn name(&self) -> &'static str {
         self.name
     }
 
-    pub fn radix(&self) -> &u32 {
+    pub const fn radix(&self) -> &u32 {
         &self.radix
     }
 }

@@ -89,14 +89,14 @@ pub enum BaseErrorKind {
 impl BaseErrorKind {
     fn from<I: InputLength>(input: &I, kind: ErrorKind) -> Self {
         match kind {
-            ErrorKind::Alpha => BaseErrorKind::Expected(Expectation::Alpha),
-            ErrorKind::Digit => BaseErrorKind::Expected(Expectation::Digit),
-            ErrorKind::HexDigit => BaseErrorKind::Expected(Expectation::HexDigit),
-            ErrorKind::OctDigit => BaseErrorKind::Expected(Expectation::OctDigit),
-            ErrorKind::AlphaNumeric => BaseErrorKind::Expected(Expectation::AlphaNumeric),
-            ErrorKind::Space => BaseErrorKind::Expected(Expectation::Space),
-            ErrorKind::MultiSpace => BaseErrorKind::Expected(Expectation::Multispace),
-            ErrorKind::CrLf => BaseErrorKind::Expected(Expectation::Eol),
+            ErrorKind::Alpha => Self::Expected(Expectation::Alpha),
+            ErrorKind::Digit => Self::Expected(Expectation::Digit),
+            ErrorKind::HexDigit => Self::Expected(Expectation::HexDigit),
+            ErrorKind::OctDigit => Self::Expected(Expectation::OctDigit),
+            ErrorKind::AlphaNumeric => Self::Expected(Expectation::AlphaNumeric),
+            ErrorKind::Space => Self::Expected(Expectation::Space),
+            ErrorKind::MultiSpace => Self::Expected(Expectation::Multispace),
+            ErrorKind::CrLf => Self::Expected(Expectation::Eol),
 
             // Problem: ErrorKind::Eof is used interchangeably by various nom
             // parsers to mean either "expected Eof" or "expected NOT eof". See
@@ -105,13 +105,13 @@ impl BaseErrorKind {
             ErrorKind::Eof => match input.input_len() {
                 // The input is at Eof, which means that this refers to an
                 // *unexpected* eof.
-                0 => BaseErrorKind::Expected(Expectation::NotEof),
+                0 => Self::Expected(Expectation::NotEof),
 
                 // The input is *not* at eof, which means that this refers to
                 // an *expected* eof.
-                _ => BaseErrorKind::Expected(Expectation::Eof),
+                _ => Self::Expected(Expectation::Eof),
             },
-            kind => BaseErrorKind::NomError(kind),
+            kind => Self::NomError(kind),
         }
     }
 }

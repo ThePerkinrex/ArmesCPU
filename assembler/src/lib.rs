@@ -24,7 +24,11 @@ mod from_str_radix;
 pub mod parser;
 
 #[cfg(feature = "cli")]
-pub fn parse<P: AsRef<Path>>(input: &[P], output: P) {
+pub fn parse<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>>(
+    input: &[P],
+    output: Q,
+    dwarf: Option<R>,
+) {
     // TODO remove unwraps
     let mut cache = FsCache::new();
     for p in input {
@@ -32,7 +36,11 @@ pub fn parse<P: AsRef<Path>>(input: &[P], output: P) {
     }
     let program = if input.len() == 1 {
         let i = &input[0];
-        match parse_file(&i.as_ref().to_path_buf(), &mut cache) {
+        match parse_file(
+            &i.as_ref().to_path_buf(),
+            &mut cache,
+            dwarf.as_ref().map(|x| x.as_ref()),
+        ) {
             Err(ParseErr::Reports(r)) => {
                 for report in r {
                     report.eprint(&mut cache).unwrap();
@@ -51,7 +59,7 @@ pub fn parse<P: AsRef<Path>>(input: &[P], output: P) {
             .iter()
             .flat_map(|i| {
                 let path = i.as_ref().to_path_buf();
-                match parse_file(&path, &mut cache) {
+                match parse_file(&path, &mut cache, dwarf.as_ref().map(|x| x.as_ref())) {
                     Err(ParseErr::Reports(r)) => {
                         for report in r {
                             report.eprint(&mut cache).unwrap();
@@ -94,7 +102,12 @@ impl<Id: std::fmt::Debug + Hash + Eq + Clone, E> From<Report<(Id, Range<usize>)>
     }
 }
 
-pub fn parse_file<'a, Id, C, E>(id: &'a Id, cache: &'a mut C) -> Result<Elf, ParseErr<Id, E>>
+#[allow(clippy::cognitive_complexity)]
+pub fn parse_file<'a, Id, C, E>(
+    id: &'a Id,
+    cache: &'a mut C,
+    dwarf: Option<&Path>,
+) -> Result<Elf, ParseErr<Id, E>>
 where
     Id: std::fmt::Debug + Hash + Eq + Clone,
     C: Cache<Id> + CacheStr<Id, Error = E> + 'a,
@@ -788,7 +801,7 @@ mod tests {
     #[test]
     fn parse_file_empty_test() {
         let mut cache = StrCache::new("");
-        let r = parse_file(&OnlyOne, &mut cache);
+        let r = parse_file(&OnlyOne, &mut cache, None);
         match r {
             Err(ParseErr::FileError(())) => unreachable!(),
             Err(ParseErr::Reports(r)) => {
@@ -821,7 +834,7 @@ mod tests {
         LD VF, $0
         JP #26 ; loop",
         );
-        let r = parse_file(&OnlyOne, &mut cache);
+        let r = parse_file(&OnlyOne, &mut cache, None);
         match r {
             Err(ParseErr::FileError(())) => unreachable!(),
             Err(ParseErr::Reports(r)) => {
@@ -848,7 +861,7 @@ mod tests {
     #[test]
     fn parse_file_symbol_test() {
         let mut cache = StrCache::new("CALL memcpy");
-        let r = parse_file(&OnlyOne, &mut cache);
+        let r = parse_file(&OnlyOne, &mut cache, None);
         match r {
             Err(ParseErr::FileError(())) => unreachable!(),
             Err(ParseErr::Reports(r)) => {
@@ -872,7 +885,7 @@ mod tests {
         memcpy:
         JP memcpy",
         );
-        let r = parse_file(&OnlyOne, &mut cache);
+        let r = parse_file(&OnlyOne, &mut cache, None);
         match r {
             Err(ParseErr::FileError(())) => unreachable!(),
             Err(ParseErr::Reports(r)) => {

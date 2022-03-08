@@ -48,11 +48,12 @@ fn hexdump(bytes: &[u8]) {
             if i % 8 == 0 {
                 print!(" ")
             }
-            if let Some(v) = v {
-                print!("{v:0>2x} ");
-            } else {
-                print!("   ")
-            }
+            v.map_or_else(
+                || print!("   "),
+                |v| {
+                    print!("{v:0>2x} ");
+                },
+            )
         }
 
         print!(" |");
