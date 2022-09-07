@@ -11,7 +11,7 @@ mod asm;
 #[cfg(feature = "asm")]
 pub use asm::{AsmElf, AsmPointee};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pointee {
     Address(u16),
     Symbol(String),
@@ -24,7 +24,7 @@ impl Default for Pointee {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Elf {
     symbols: HashMap<String, Pointee>,
     relocations: Vec<(u16, u16, String)>,

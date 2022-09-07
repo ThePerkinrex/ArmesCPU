@@ -248,8 +248,8 @@ impl<I: IntoIterator<Item = u8>> IntoIterator for AstExtended<I> {
 
     fn into_iter(self) -> Self::IntoIter {
         match self {
-            AstExtended::Ast(a) => AstExtendedIter::Ast(BytecodeInstr::from(a).into_iter()),
-            AstExtended::Data(b) => AstExtendedIter::Data(b.into_iter()),
+            Self::Ast(a) => AstExtendedIter::Ast(BytecodeInstr::from(a).into_iter()),
+            Self::Data(b) => AstExtendedIter::Data(b.into_iter()),
         }
     }
 }
@@ -290,15 +290,15 @@ impl<T> Len for [T] {
 impl<I: Len> Len for AstExtended<I> {
     fn len(&self) -> usize {
         match self {
-            AstExtended::Ast(a) => a.len(),
-            AstExtended::Data(b) => b.len(),
+            Self::Ast(a) => a.len(),
+            Self::Data(b) => b.len(),
         }
     }
 
     fn is_empty(&self) -> bool {
         match self {
-            AstExtended::Ast(a) => a.is_empty(),
-            AstExtended::Data(b) => b.is_empty(),
+            Self::Ast(a) => a.is_empty(),
+            Self::Data(b) => b.is_empty(),
         }
     }
 }
@@ -319,8 +319,8 @@ impl<I: Iterator<Item = u8>> Iterator for AstExtendedIter<I> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            AstExtendedIter::Ast(b) => b.next(),
-            AstExtendedIter::Data(i) => i.next(),
+            Self::Ast(b) => b.next(),
+            Self::Data(i) => i.next(),
         }
     }
 }

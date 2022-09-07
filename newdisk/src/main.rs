@@ -16,7 +16,7 @@ fn parse(s: &str) -> Result<u64, String> {
         Err("argument is empty".into())
     } else {
         match s.chars().last().unwrap().to_ascii_lowercase() {
-            x if x.is_digit(10) => Ok(s.parse::<u64>().map_err(|x| x.to_string())?),
+            x if x.is_ascii_digit() => Ok(s.parse::<u64>().map_err(|x| x.to_string())?),
             'g' => parse(&format!("{}m", &s[..s.len() - 1])).map(|x| x * 1024),
             'm' => parse(&format!("{}k", &s[..s.len() - 1])).map(|x| x * 1024),
             'k' => parse(&s[..s.len() - 1]).map(|x| x * 1024),

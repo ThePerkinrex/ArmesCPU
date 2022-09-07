@@ -24,14 +24,14 @@ impl<
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AsmElf<I> {
     symbols: HashMap<String, AsmPointee>,
     relocations: Vec<(u16, u16, String)>,
     data: Vec<(u16, Vec<AstExtended<I>>)>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AsmPointee {
     None,
     Symbol(String),

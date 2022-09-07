@@ -58,24 +58,24 @@ pub enum Expectation {
 impl Display for Expectation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expectation::Tag(t) => write!(f, "expected {:?}", t),
-            Expectation::Char(c) => write!(f, "expected {:?}", c),
-            Expectation::Eof => write!(f, "expected EOF"),
-            Expectation::NotEof => write!(f, "unexpected EOF"),
-            Expectation::Eol => write!(f, "expected EOL"),
-            Expectation::Alpha => write!(f, "expected alphabetic ([a-zA-z]) character"),
-            Expectation::Digit => write!(f, "expected digit [0-9] character"),
-            Expectation::HexDigit => write!(f, "expected hex digit [0-9a-fA-F] character"),
-            Expectation::BinDigit => write!(f, "expected binary digit [0-1] character"),
-            Expectation::OctDigit => write!(f, "expected octal digit [0-7] character"),
-            Expectation::AlphaNumeric => write!(f, "expected alphanumeric [0-9a-zA-Z] character"),
-            Expectation::Space => write!(f, "expected space or tab"),
-            Expectation::Multispace => {
+            Self::Tag(t) => write!(f, "expected {:?}", t),
+            Self::Char(c) => write!(f, "expected {:?}", c),
+            Self::Eof => write!(f, "expected EOF"),
+            Self::NotEof => write!(f, "unexpected EOF"),
+            Self::Eol => write!(f, "expected EOL"),
+            Self::Alpha => write!(f, "expected alphabetic ([a-zA-z]) character"),
+            Self::Digit => write!(f, "expected digit [0-9] character"),
+            Self::HexDigit => write!(f, "expected hex digit [0-9a-fA-F] character"),
+            Self::BinDigit => write!(f, "expected binary digit [0-1] character"),
+            Self::OctDigit => write!(f, "expected octal digit [0-7] character"),
+            Self::AlphaNumeric => write!(f, "expected alphanumeric [0-9a-zA-Z] character"),
+            Self::Space => write!(f, "expected space or tab"),
+            Self::Multispace => {
                 write!(f, "expected space, tab, newline, or carriage return")
             }
-            Expectation::HexNumber(n) => write!(f, "expected hex number in range for {}", n),
-            Expectation::BinNumber(n) => write!(f, "expected binary number in range for {}", n),
-            Expectation::DecNumber(n) => write!(f, "expected decimal number in range for {}", n),
+            Self::HexNumber(n) => write!(f, "expected hex number in range for {}", n),
+            Self::BinNumber(n) => write!(f, "expected binary number in range for {}", n),
+            Self::DecNumber(n) => write!(f, "expected decimal number in range for {}", n),
         }
     }
 }
@@ -119,8 +119,8 @@ impl BaseErrorKind {
 impl Display for BaseErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BaseErrorKind::NomError(e) => write!(f, "{:?}", e),
-            BaseErrorKind::Expected(e) => write!(f, "{}", e),
+            Self::NomError(e) => write!(f, "{:?}", e),
+            Self::Expected(e) => write!(f, "{}", e),
         }
     }
 }
@@ -134,8 +134,8 @@ pub enum StackContext {
 impl Display for StackContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StackContext::Kind(k) => write!(f, "{}", k),
-            StackContext::Ctx(c) => write!(f, "{:?}", c),
+            Self::Kind(k) => write!(f, "{}", k),
+            Self::Ctx(c) => write!(f, "{:?}", c),
         }
     }
 }
@@ -238,16 +238,16 @@ impl<I> FromExternalError<I, FromStrRadixError> for Error<I> {
 impl<I: std::fmt::Debug> Error<I> {
     fn print(&self, f: &mut std::fmt::Formatter<'_>, tabs: usize) -> std::fmt::Result {
         match self {
-            Error::Base { kind, input } => {
+            Self::Base { kind, input } => {
                 write!(f, "{0:\t>1$}{2} from {3:?}", "", &tabs, kind, input)
             }
-            Error::Stack { base, stack } => {
+            Self::Stack { base, stack } => {
                 for (i, (input, ctx)) in stack.iter().rev().enumerate() {
                     writeln!(f, "{0:\t>1$}{2} from {3:?}", "", &(tabs + i), ctx, input)?;
                 }
                 base.print(f, tabs + stack.len())
             }
-            Error::Alt(v) => {
+            Self::Alt(v) => {
                 for e in v {
                     e.print(f, tabs)?;
                     writeln!(f)?;

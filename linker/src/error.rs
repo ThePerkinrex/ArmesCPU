@@ -13,23 +13,23 @@ pub enum ProgramLinkError {
 impl Display for ProgramLinkError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ProgramLinkError::SymbolNotDefined(symbol, Some(file)) => write!(
+            Self::SymbolNotDefined(symbol, Some(file)) => write!(
                 f,
                 "{symbol:?} is not defined, i.e., it points to nowhere ({file})"
             ),
-            ProgramLinkError::SymbolNotDefined(symbol, None) => {
+            Self::SymbolNotDefined(symbol, None) => {
                 write!(f, "{symbol:?} is not defined, i.e., it points to nowhere ")
             }
-            ProgramLinkError::SymbolNotDeclared(symbol, Some(file)) => {
+            Self::SymbolNotDeclared(symbol, Some(file)) => {
                 write!(f, "{symbol:?} is not declared ({file})")
             }
-            ProgramLinkError::SymbolNotDeclared(symbol, None) => {
+            Self::SymbolNotDeclared(symbol, None) => {
                 write!(f, "{symbol:?} is not declared")
             }
-            ProgramLinkError::SegmentNotFound(file, seg) => {
+            Self::SegmentNotFound(file, seg) => {
                 write!(f, "segment {seg} not found in file {file}")
             }
-            ProgramLinkError::SegmentAddrNotFound(file, seg, addr) => write!(
+            Self::SegmentAddrNotFound(file, seg, addr) => write!(
                 f,
                 "addr {addr:0>4x} not found @ segment {seg} in file {file}"
             ),
@@ -48,8 +48,8 @@ pub enum ElfError {
 impl Display for ElfError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ElfError::ProgramLinkError(e) => e.fmt(f),
-            ElfError::DuplicateSymbol(symbol, og, dup) => write!(
+            Self::ProgramLinkError(e) => e.fmt(f),
+            Self::DuplicateSymbol(symbol, og, dup) => write!(
                 f,
                 "symbol {symbol:?} duplicate found in {dup} (original in {og})"
             ),
