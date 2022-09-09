@@ -7,6 +7,7 @@ _start:
 	CALL print
 	LD I, msg2
 	CALL print
+
 loop:
 	JP loop
 msg:
